@@ -66,6 +66,25 @@ class RatioCalculator:
             raise ValueError("revenue cannot be zero")
         return round(ebitda / revenue, 2)
 
+    def gross_profit_margin(self, gross_profit: float, total_revenue: float) -> float:
+        """Measures the percentage of total revenue retained after deducting cost of goods sold."""
+        if total_revenue == 0:
+            raise ValueError("total_revenue cannot be zero")
+        return round(gross_profit / total_revenue, 2)
+
+    def ebit_margin(self, ebit: float, total_revenue: float) -> float:
+        """Measures operating profitability as a percentage of total revenue before interest and tax."""
+        if total_revenue == 0:
+            raise ValueError("total_revenue cannot be zero")
+        return round(ebit / total_revenue, 2)
+
+    def roce(self, ebit: float, total_equity: float, total_debt: float) -> float:
+        """Measures return generated on all capital deployed in the business.
+        total_debt should include all liabilities (current + long-term) so that total_equity + total_debt = total assets."""
+        if total_equity + total_debt == 0:
+            raise ValueError("total_equity + total_debt cannot be zero")
+        return round(ebit / (total_equity + total_debt), 2)
+
     # --- Efficiency ---
 
     def asset_turnover(self, revenue: float, total_assets: float) -> float:
@@ -88,8 +107,36 @@ class RatioCalculator:
             raise ValueError("accounts_receivable cannot be zero")
         return round(revenue / accounts_receivable, 2)
 
+    def fixed_asset_turnover(self, total_revenue: float, fixed_assets: float) -> float:
+        """Measures how efficiently fixed assets generate revenue.
+        Revenue here = Total Revenue including other income (28,409.49 for Cipla FY2025)"""
+        if fixed_assets == 0:
+            raise ValueError("fixed_assets cannot be zero")
+        return round(total_revenue / fixed_assets, 2)
+
+    def days_sales_outstanding(self, accounts_receivable: float, total_revenue: float) -> float:
+        """Measures the average number of days taken to collect payment after a sale.
+        Revenue here = Total Revenue including other income (28,409.49 for Cipla FY2025)"""
+        if total_revenue == 0:
+            raise ValueError("total_revenue cannot be zero")
+        return round((accounts_receivable / total_revenue) * 365, 2)
+
     # --- DuPont ---
 
     def dupont_roe(self, net_profit_margin: float, asset_turnover: float, equity_multiplier: float) -> float:
         """Decomposes ROE into profitability, efficiency, and leverage components (margin × turnover × multiplier)."""
         return round(net_profit_margin * asset_turnover * equity_multiplier, 2)
+
+    # --- Valuation ---
+
+    def eps(self, net_income: float, shares_outstanding: float) -> float:
+        """Measures earnings attributable to each ordinary share."""
+        if shares_outstanding == 0:
+            raise ValueError("shares_outstanding cannot be zero")
+        return round(net_income / shares_outstanding, 2)
+
+    def pe_ratio(self, market_price: float, eps: float) -> float:
+        """Measures the price investors are willing to pay per unit of earnings."""
+        if eps == 0:
+            raise ValueError("eps cannot be zero")
+        return round(market_price / eps, 2)
