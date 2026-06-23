@@ -8,11 +8,11 @@ class RatioCalculator:
             raise ValueError("current_liabilities cannot be zero")
         return round(current_assets / current_liabilities, 2)
 
-    def quick_ratio(self, current_assets: float, inventory: float, current_liabilities: float) -> float:
-        """Measures ability to meet short-term obligations without relying on inventory liquidation."""
+    def quick_ratio(self, cash_and_equivalents: float, accounts_receivable: float, current_liabilities: float) -> float:
+        """Measures ability to meet short-term obligations using only cash and receivables (excludes inventory and other less-liquid assets)."""
         if current_liabilities == 0:
             raise ValueError("current_liabilities cannot be zero")
-        return round((current_assets - inventory) / current_liabilities, 2)
+        return round((cash_and_equivalents + accounts_receivable) / current_liabilities, 2)
 
     def cash_ratio(self, cash_and_equivalents: float, current_liabilities: float) -> float:
         """Measures ability to cover short-term obligations using only cash and cash equivalents."""
@@ -22,11 +22,11 @@ class RatioCalculator:
 
     # --- Solvency ---
 
-    def debt_to_equity(self, total_debt: float, shareholders_equity: float) -> float:
-        """Measures financial leverage as the proportion of debt relative to equity."""
+    def debt_to_equity(self, current_liabilities: float, total_debt: float, shareholders_equity: float) -> float:
+        """Measures total financial obligations (current liabilities + long-term debt) relative to shareholders' equity."""
         if shareholders_equity == 0:
             raise ValueError("shareholders_equity cannot be zero")
-        return round(total_debt / shareholders_equity, 2)
+        return round((current_liabilities + total_debt) / shareholders_equity, 2)
 
     def interest_coverage(self, ebit: float, interest_expense: float) -> float:
         """Measures how easily a company can pay interest on outstanding debt from operating earnings."""
@@ -69,7 +69,8 @@ class RatioCalculator:
     # --- Efficiency ---
 
     def asset_turnover(self, revenue: float, total_assets: float) -> float:
-        """Measures how efficiently a company uses its assets to generate revenue."""
+        """Measures how efficiently a company uses its assets to generate revenue.
+        Revenue here = Total Revenue including other income (28,409.49 for Cipla FY2025)"""
         if total_assets == 0:
             raise ValueError("total_assets cannot be zero")
         return round(revenue / total_assets, 2)
@@ -81,7 +82,8 @@ class RatioCalculator:
         return round(cogs / inventory, 2)
 
     def receivables_turnover(self, revenue: float, accounts_receivable: float) -> float:
-        """Measures how efficiently a company collects revenue owed by customers."""
+        """Measures how efficiently a company collects revenue owed by customers.
+        Revenue here = Total Revenue including other income (28,409.49 for Cipla FY2025)"""
         if accounts_receivable == 0:
             raise ValueError("accounts_receivable cannot be zero")
         return round(revenue / accounts_receivable, 2)
