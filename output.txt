@@ -1,39 +1,75 @@
-Sensitivity Analysis Test — DCF Calculator
-==========================================
+MCP Data Layer — Live Output (YFinanceProvider)
+================================================
 
-WHAT WAS DONE
--------------
-Replaced the placeholder test_sensitivity_analysis in tests/test_dcf.py
-with a professor-verified version using real Cipla FY2025 sensitivity table values.
+Ticker tested : CIPLA (auto-resolved to CIPLA.NS)
+Fetched on    : 2026-06-24
+Data source   : yfinance → NSE
 
-INPUTS USED
------------
-base_fcfe         = 1571.02
-ke_values         = [0.0801, 0.0844, 0.0901, 0.09]
-tg_values         = [0.07, 0.08, 0.09]
-shares_outstanding= 80.761712 (crore)
-growth_rate       = 0.09
-years             = 3
 
-CELLS VERIFIED (from professor Excel)
---------------------------------------
-ke=0.0844, tg=0.08  →  4908.03   (abs tolerance ±5.0)
-ke=0.0844, tg=0.07  →  1526.90   (abs tolerance ±5.0)
-ke=0.0901, tg=0.08  →  2138.16   (abs tolerance ±5.0)
-ke=0.0801, tg=0.08  →  215976.55 (abs tolerance ±100.0)
+=== get_financial_statements("CIPLA") ===
+{
+  "ticker": "CIPLA.NS",
+  "company_name": "Cipla Limited",
+  "fiscal_year_end": "2026-03-31",
+  "currency": "INR",
+  "total_assets": 424959800000.0,
+  "current_assets": 241470300000.0,
+  "inventory": 65967200000.0,
+  "cash": 10182200000.0,
+  "accounts_receivable": 56200500000.0,
+  "current_liabilities": 70135900000.0,
+  "total_non_current_liabilities": 9621500000.0,
+  "shareholders_equity": 344319500000.0,
+  "total_revenue": 277116900000.0,
+  "gross_profit": 172596000000.0,
+  "net_income": 38792300000.0,
+  "ebit": 52718600000.0,
+  "interest_expense": 482300000.0,
+  "tax_expense": 13538400000.0,
+  "pretax_income": 52236300000.0,
+  "cfo": 39400200000.0,
+  "capex": 30793100000.0,
+  "non_cash_expenses": 10836200000.0
+}
 
-EDGE CASE VERIFIED
-------------------
-ke=0.09, tg=0.09  →  None
-(ke == tg makes Gordon Growth denominator zero — undefined)
 
-BUG FIXED
----------
-Initial attempt checked result[0.0901][0.09] for None, but 0.0901 > 0.09
-so that cell is valid (returns 212032.63), not None.
-Fix: added ke=0.09 explicitly to ke_values so result[0.09][0.09] correctly
-tests the ke == tg boundary.
+=== get_market_data("CIPLA") ===
+{
+  "ticker": "CIPLA.NS",
+  "company_name": "Cipla Limited",
+  "current_price": 1437.9,
+  "shares_outstanding": 80.78,
+  "beta": 0.12,
+  "market_cap": 1161600827392.0,
+  "currency": "INR"
+}
 
-RESULT
-------
-13/13 tests passing in tests/test_dcf.py
+Note: shares_outstanding is in crore (raw yfinance value / 10,000,000).
+      capex and interest_expense are returned as positive (abs applied).
+
+
+=== get_sector_growth_rate("pharmaceuticals") ===
+0.09
+
+
+SECTOR GROWTH RATE TABLE
+-------------------------
+pharmaceuticals  0.09
+it               0.10
+banking          0.13
+fmcg             0.08
+automobiles      0.06
+oil_gas          0.05
+telecom          0.07
+metals           0.04
+cement           0.07
+power            0.05
+healthcare       0.11
+default          0.08
+
+
+MCP TOOLS REGISTERED (financial_data_server.py)
+-------------------------------------------------
+- get_financial_statements(ticker)
+- get_market_data(ticker)
+- get_sector_growth_rate(ticker, sector)
