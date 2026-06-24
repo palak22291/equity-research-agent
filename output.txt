@@ -1,52 +1,71 @@
-Session Summary — Equity Research Agent (Ratios)
-=================================================
+DCF Calculator Summary — Cipla FY2025
+======================================
 
-1. CLEANED UP tests/test_ratios.py
-   - Removed stale uncertainty comments: "[professor expects X — formula mismatch]"
-     and "[no professor reference]" from asset_turnover, receivables_turnover,
-     inventory_turnover, and debt_to_assets tests.
-   - All 14 existing tests passed after cleanup.
+FILE: app/calculators/dcf.py
+TEST: tests/test_dcf.py
+TESTS PASSING: 13/13
 
-2. RESOLVED FORMULA MISMATCHES (asset_turnover & receivables_turnover)
-   - Root cause: professor uses Total Revenue (Revenue from Operations + Other Income),
-     not just Revenue from Operations.
-   - Added constant: TOTAL_REVENUE = 28_409.49
-   - Updated asset_turnover and receivables_turnover methods in ratios.py to note this
-     in their docstrings.
-   - Updated tests to use TOTAL_REVENUE; expected values now match professor Excel
-     exactly: asset_turnover = 0.76, receivables_turnover = 5.16.
+METHODS
+-------
+1. forecast_cashflows(base_cashflow, growth_rate, years)
+   Returns list of CFs for periods 1..years. NOT rounded internally —
+   rounding the year-3 CF before terminal value causes a 0.87 error
+   that cascades into a wrong share price.
 
-3. ADDED 7 NEW RATIO METHODS to app/calculators/ratios.py
+2. present_value(cashflow, discount_rate, period)
+   CF / (1 + r)^t  →  round(result, 2)
 
-   Profitability:
-   - gross_profit_margin(gross_profit, total_revenue)  → Gross Profit / Total Revenue
-   - ebit_margin(ebit, total_revenue)                  → EBIT / Total Revenue
-   - roce(ebit, total_equity, total_debt)              → EBIT / (Equity + All Liabilities)
-     Note: total_debt must include current liabilities so denominator = Total Assets.
+3. terminal_value(last_forecasted_cf, growth_rate, discount_rate)
+   Gordon Growth: last_cf × (1 + g) / (r - g)  →  round(result, 2)
+   Raises ValueError if discount_rate <= growth_rate.
 
-   Efficiency:
-   - fixed_asset_turnover(total_revenue, fixed_assets) → Total Revenue / Fixed Assets
-   - days_sales_outstanding(accounts_receivable, total_revenue) → (AR / Revenue) * 365
+4. pv_of_terminal_value(terminal_value, discount_rate, periods)
+   TV / (1 + r)^n  →  round(result, 2)
 
-   Valuation (new section):
-   - eps(net_income, shares_outstanding)               → Net Income / Shares Outstanding
-   - pe_ratio(market_price, eps)                       → Market Price / EPS
+5. intrinsic_equity_value(forecasted_fcfe, ke, terminal_growth_rate)
+   Sum of PV of all FCFEs + PV of terminal value.
+   Full precision internally, rounds only the final total.
 
-   Each method has: docstring, ValueError guard on zero denominator, round(result, 2).
+6. intrinsic_share_price(equity_value, shares_outstanding)
+   equity_value / shares_outstanding  →  round(result, 2)
+   Raises ValueError if shares_outstanding is zero.
+   NOTE: units must match — equity value is in crore INR, so pass
+   shares in crore (807617120 / 10_000_000 = 80.761712).
 
-4. ADDED TESTS for all 7 new methods in tests/test_ratios.py
-   New constants added: GROSS_PROFIT, FIXED_ASSETS, SHARES_OUTSTANDING, MARKET_PRICE.
+7. intrinsic_enterprise_value(forecasted_fcff, wacc, terminal_growth_rate)
+   Same as intrinsic_equity_value but uses FCFF discounted at WACC.
 
-   Verified expected outputs (Cipla FY2025, professor Excel):
-   - gross_profit_margin : 0.69
-   - ebit_margin         : 0.24
-   - roce                : 0.18
-   - fixed_asset_turnover: 5.29
-   - days_sales_outstanding: 70.74
-   - eps                 : 65.32  (NET_INCOME converted crore → rupees for computation)
-   - pe_ratio            : 22.96
+8. valuation_verdict(intrinsic_price, market_price, margin=0.10)
+   intrinsic > market × 1.10  →  "Undervalued"
+   intrinsic < market × 0.90  →  "Overvalued"
+   otherwise                  →  "Fairly Valued"
 
-   Zero-division guards for all 7 new methods added to existing guard test.
+9. sensitivity_analysis(base_fcfe, ke_values, tg_values, shares_outstanding, growth_rate, years)
+   Returns 2D dict {ke: {tg: share_price}} for every (ke, tg) combination.
+   Cells where ke <= tg return None (Gordon Growth undefined).
 
-5. FINAL TEST RESULT
-   21/21 tests passed.
+VERIFIED CIPLA FY2025 OUTPUTS
+------------------------------
+Inputs:
+  BASE_FCFE            1571.02  (crore INR)
+  BASE_FCFF            1675.01  (crore INR)
+  GROWTH_RATE          9%
+  KE                   0.08437683105323401
+  WACC                 0.0840313648229122
+  TERMINAL_GROWTH_RATE 8%
+  SHARES_OUTSTANDING   807,617,120
+  MARKET_PRICE         ₹1,441
+
+Outputs:
+  Forecasted FCFE  Year 1    1712.41  crore
+                   Year 2    1866.53  crore
+                   Year 3    2034.52  crore
+  PV of FCFE       Year 1    1579.17  crore
+                   Year 2    1587.36  crore
+                   Year 3    1595.59  crore
+  Terminal Value (FCFE)    502024.81  crore
+  PV of Terminal Value     393717.29  crore
+  Intrinsic Equity Value   398479.40  crore
+  Intrinsic Share Price      4934.01  INR/share
+  Intrinsic Enterprise Value 461268.36 crore
+  Verdict vs ₹1441           UNDERVALUED
