@@ -1,71 +1,39 @@
-DCF Calculator Summary — Cipla FY2025
-======================================
+Sensitivity Analysis Test — DCF Calculator
+==========================================
 
-FILE: app/calculators/dcf.py
-TEST: tests/test_dcf.py
-TESTS PASSING: 13/13
+WHAT WAS DONE
+-------------
+Replaced the placeholder test_sensitivity_analysis in tests/test_dcf.py
+with a professor-verified version using real Cipla FY2025 sensitivity table values.
 
-METHODS
--------
-1. forecast_cashflows(base_cashflow, growth_rate, years)
-   Returns list of CFs for periods 1..years. NOT rounded internally —
-   rounding the year-3 CF before terminal value causes a 0.87 error
-   that cascades into a wrong share price.
+INPUTS USED
+-----------
+base_fcfe         = 1571.02
+ke_values         = [0.0801, 0.0844, 0.0901, 0.09]
+tg_values         = [0.07, 0.08, 0.09]
+shares_outstanding= 80.761712 (crore)
+growth_rate       = 0.09
+years             = 3
 
-2. present_value(cashflow, discount_rate, period)
-   CF / (1 + r)^t  →  round(result, 2)
+CELLS VERIFIED (from professor Excel)
+--------------------------------------
+ke=0.0844, tg=0.08  →  4908.03   (abs tolerance ±5.0)
+ke=0.0844, tg=0.07  →  1526.90   (abs tolerance ±5.0)
+ke=0.0901, tg=0.08  →  2138.16   (abs tolerance ±5.0)
+ke=0.0801, tg=0.08  →  215976.55 (abs tolerance ±100.0)
 
-3. terminal_value(last_forecasted_cf, growth_rate, discount_rate)
-   Gordon Growth: last_cf × (1 + g) / (r - g)  →  round(result, 2)
-   Raises ValueError if discount_rate <= growth_rate.
+EDGE CASE VERIFIED
+------------------
+ke=0.09, tg=0.09  →  None
+(ke == tg makes Gordon Growth denominator zero — undefined)
 
-4. pv_of_terminal_value(terminal_value, discount_rate, periods)
-   TV / (1 + r)^n  →  round(result, 2)
+BUG FIXED
+---------
+Initial attempt checked result[0.0901][0.09] for None, but 0.0901 > 0.09
+so that cell is valid (returns 212032.63), not None.
+Fix: added ke=0.09 explicitly to ke_values so result[0.09][0.09] correctly
+tests the ke == tg boundary.
 
-5. intrinsic_equity_value(forecasted_fcfe, ke, terminal_growth_rate)
-   Sum of PV of all FCFEs + PV of terminal value.
-   Full precision internally, rounds only the final total.
-
-6. intrinsic_share_price(equity_value, shares_outstanding)
-   equity_value / shares_outstanding  →  round(result, 2)
-   Raises ValueError if shares_outstanding is zero.
-   NOTE: units must match — equity value is in crore INR, so pass
-   shares in crore (807617120 / 10_000_000 = 80.761712).
-
-7. intrinsic_enterprise_value(forecasted_fcff, wacc, terminal_growth_rate)
-   Same as intrinsic_equity_value but uses FCFF discounted at WACC.
-
-8. valuation_verdict(intrinsic_price, market_price, margin=0.10)
-   intrinsic > market × 1.10  →  "Undervalued"
-   intrinsic < market × 0.90  →  "Overvalued"
-   otherwise                  →  "Fairly Valued"
-
-9. sensitivity_analysis(base_fcfe, ke_values, tg_values, shares_outstanding, growth_rate, years)
-   Returns 2D dict {ke: {tg: share_price}} for every (ke, tg) combination.
-   Cells where ke <= tg return None (Gordon Growth undefined).
-
-VERIFIED CIPLA FY2025 OUTPUTS
-------------------------------
-Inputs:
-  BASE_FCFE            1571.02  (crore INR)
-  BASE_FCFF            1675.01  (crore INR)
-  GROWTH_RATE          9%
-  KE                   0.08437683105323401
-  WACC                 0.0840313648229122
-  TERMINAL_GROWTH_RATE 8%
-  SHARES_OUTSTANDING   807,617,120
-  MARKET_PRICE         ₹1,441
-
-Outputs:
-  Forecasted FCFE  Year 1    1712.41  crore
-                   Year 2    1866.53  crore
-                   Year 3    2034.52  crore
-  PV of FCFE       Year 1    1579.17  crore
-                   Year 2    1587.36  crore
-                   Year 3    1595.59  crore
-  Terminal Value (FCFE)    502024.81  crore
-  PV of Terminal Value     393717.29  crore
-  Intrinsic Equity Value   398479.40  crore
-  Intrinsic Share Price      4934.01  INR/share
-  Intrinsic Enterprise Value 461268.36 crore
-  Verdict vs ₹1441           UNDERVALUED
+RESULT
+------
+13/13 tests passing in tests/test_dcf.py

@@ -105,19 +105,17 @@ def test_valuation_verdict_fairly_valued(calc):
 # --- Sensitivity Analysis ---
 
 def test_sensitivity_analysis(calc):
-    ke_vals = [0.08, 0.085, 0.09]
-    tg_vals = [0.07, 0.075]
+    ke_vals = [0.0801, 0.0844, 0.0901, 0.09]
+    tg_vals = [0.07, 0.08, 0.09]
     result = calc.sensitivity_analysis(
-        BASE_FCFE, ke_vals, tg_vals, SHARES_CRORE, GROWTH_RATE, years=3
+        1571.02, ke_vals, tg_vals, 80.761712, 0.09, years=3
     )
-    # Result is a 2D dict keyed by ke then tg
-    assert set(result.keys()) == set(ke_vals)
-    assert set(result[0.085].keys()) == set(tg_vals)
-    # All valid cells should be positive share prices
-    for ke in ke_vals:
-        for tg in tg_vals:
-            assert result[ke][tg] is not None
-            assert result[ke][tg] > 0
-    # ke == tg edge: ke=0.08 would be invalid with tg=0.08 (boundary case not in grid)
-    # Cells with ke > tg should yield higher prices at lower ke (inverse relationship)
-    assert result[0.08][0.07] > result[0.09][0.07]
+
+    # Verified cells from professor sensitivity table
+    assert result[0.0844][0.08] == pytest.approx(4908.03,    abs=5.0)
+    assert result[0.0844][0.07] == pytest.approx(1526.90,    abs=5.0)
+    assert result[0.0901][0.08] == pytest.approx(2138.16,    abs=5.0)
+    assert result[0.0801][0.08] == pytest.approx(215976.55,  abs=100.0)
+
+    # ke=0.09, tg=0.09: ke == tg — Gordon Growth undefined, must return None
+    assert result[0.09][0.09] is None
