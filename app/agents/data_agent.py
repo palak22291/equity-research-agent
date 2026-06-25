@@ -102,8 +102,8 @@ def fetch_all_financial_data(ticker: str, sector: str) -> str:
                 delta_cl = _r2(curr_cl - prev_cl)
             if curr_ltd is not None and prev_ltd is not None:
                 net_borrowing = _r2(curr_ltd - prev_ltd)
-    except Exception:
-        pass  # deltas stay None; cashflow analysis will report missing fields
+    except Exception as exc:
+        print(f"[data_agent] WARNING: balance sheet delta fetch failed: {exc}")
 
     result = {
         # metadata
