@@ -206,7 +206,7 @@ def run_dcf_valuation(
 
 valuation_agent = LlmAgent(
     name="valuation_agent",
-    model=os.environ.get("GEMINI_MODEL", "gemini-2.0-flash"),
+    model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
     instruction="""You are a valuation agent. Given financial analysis results and \
 market data, calculate the intrinsic value of the company using DCF methodology. \
 Always use deterministic tools for all calculations. Never state a valuation verdict \

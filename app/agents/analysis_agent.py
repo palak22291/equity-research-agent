@@ -249,7 +249,7 @@ def run_cashflow_analysis(financial_data_json: str) -> str:
 
 analysis_agent = LlmAgent(
     name="analysis_agent",
-    model=os.environ.get("GEMINI_MODEL", "gemini-2.0-flash"),
+    model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
     instruction="""You are a financial analysis agent. Given financial statement data, \
 calculate all financial ratios and free cash flows using the deterministic calculator \
 tools. Never calculate any numbers yourself — always use the provided tools.

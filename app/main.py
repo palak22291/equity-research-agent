@@ -1,9 +1,9 @@
 """Entry point for the equity research agent pipeline.
 
 Usage:
-    python -m app.main CIPLA pharmaceuticals
-    python -m app.main INFY it
-    python -m app.main                          # prompts for ticker and sector
+    python3 -m app.main CIPLA pharmaceuticals
+    python3 -m app.main INFY it
+    python3 -m app.main                          # prompts for ticker and sector
 
 Requires:
     GEMINI_API_KEY environment variable (or GOOGLE_API_KEY)

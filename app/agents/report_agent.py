@@ -5,7 +5,7 @@ from google.adk.agents import LlmAgent
 
 report_agent = LlmAgent(
     name="report_agent",
-    model=os.environ.get("GEMINI_MODEL", "gemini-2.0-flash"),
+    model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
     instruction="""You are an equity research report writer. Given financial analysis \
 and valuation results, write a professional equity research report in markdown format. \
 Be concise and factual. Always cite which tool produced each numerical result.

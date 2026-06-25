@@ -152,7 +152,7 @@ def fetch_all_financial_data(ticker: str, sector: str) -> str:
 
 data_agent = LlmAgent(
     name="data_agent",
-    model=os.environ.get("GEMINI_MODEL", "gemini-2.0-flash"),
+    model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
     instruction="""You are a financial data agent. Given a stock ticker and sector, \
 fetch the company's financial statements, market data, and sector growth rate using \
 the available tools. Return all data in a structured format.
