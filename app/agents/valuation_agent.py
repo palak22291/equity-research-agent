@@ -213,20 +213,20 @@ Always use deterministic tools for all calculations. Never state a valuation ver
 without running the calculator first.
 
 You have the following financial data:
-{financial_data}
+{temp:financial_data}
 
 You have the following analysis results:
-{analysis_results}
+{temp:analysis_results}
 
 Your tasks:
 1. Call calculate_cost_of_capital with financial_data_json set to the JSON from \
-{financial_data} to get ke and wacc.
+{temp:financial_data} to get ke and wacc.
 
-2. Extract from {analysis_results}:
+2. Extract from {temp:analysis_results}:
    - fcfe = the "validated_fcfe" value from the "fcfe" section of "cashflow_analysis"
    - fcff = the "validated_fcff" value from the "fcff" section of "cashflow_analysis"
 
-3. Extract from {financial_data}:
+3. Extract from {temp:financial_data}:
    - growth_rate (sector growth rate)
    - shares_outstanding (in crore)
    - current_price (current market price in INR)
@@ -238,6 +238,6 @@ After both tools return, combine their results into one JSON object with keys \
 "cost_of_capital" and "dcf_valuation". Output ONLY the combined JSON — no markdown, \
 no explanation text.""",
     tools=[calculate_cost_of_capital, run_dcf_valuation],
-    output_key="valuation_results",
+    output_key="temp:valuation_results",
     include_contents="none",
 )

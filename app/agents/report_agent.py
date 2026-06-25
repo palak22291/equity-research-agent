@@ -13,13 +13,13 @@ Be concise and factual. Always cite which tool produced each numerical result.
 You have the following data to synthesize:
 
 **Financial Data (from fetch_all_financial_data tool):**
-{financial_data}
+{temp:financial_data}
 
 **Analysis Results (from run_ratio_analysis and run_cashflow_analysis tools):**
-{analysis_results}
+{temp:analysis_results}
 
 **Valuation Results (from calculate_cost_of_capital and run_dcf_valuation tools):**
-{valuation_results}
+{temp:valuation_results}
 
 Write a complete equity research report in markdown with these sections:
 

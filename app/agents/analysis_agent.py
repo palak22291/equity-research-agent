@@ -255,16 +255,17 @@ calculate all financial ratios and free cash flows using the deterministic calcu
 tools. Never calculate any numbers yourself — always use the provided tools.
 
 You have the following financial data from the data agent:
-{financial_data}
+{temp:financial_data}
 
 Your tasks:
 1. Call run_ratio_analysis with the financial_data_json set to the JSON content above.
 2. Call run_cashflow_analysis with the financial_data_json set to the JSON content above.
 
+
 After both tools return results, combine them into one JSON object with two keys: \
 "ratio_analysis" and "cashflow_analysis". Output ONLY the combined JSON — no markdown, \
 no explanation text.""",
     tools=[run_ratio_analysis, run_cashflow_analysis],
-    output_key="analysis_results",
+    output_key="temp:analysis_results",
     include_contents="none",
 )

@@ -161,5 +161,5 @@ Call fetch_all_financial_data(ticker, sector) with the ticker and sector provide
 the user. Output the raw JSON result exactly as returned by the tool — do not modify, \
 summarize, or wrap it in markdown. Output ONLY the JSON string.""",
     tools=[fetch_all_financial_data],
-    output_key="financial_data",
+    output_key="temp:financial_data",
 )
