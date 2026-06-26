@@ -2,10 +2,11 @@
 import os
 
 from google.adk.agents import LlmAgent
+from google.adk.models.lite_llm import LiteLlm
 
 report_agent = LlmAgent(
     name="report_agent",
-    model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
+    model=LiteLlm(model="groq/llama-3.1-8b-instant"),
     instruction="""You are an equity research report writer. Given financial analysis \
 and valuation results, write a professional equity research report in markdown format. \
 Be concise and factual. Always cite which tool produced each numerical result.

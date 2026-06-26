@@ -4,6 +4,7 @@ import os
 
 import yfinance as yf
 from google.adk.agents import LlmAgent
+from google.adk.models.lite_llm import LiteLlm
 
 from app.mcp.providers.yfinance_provider import YFinanceProvider
 
@@ -152,14 +153,13 @@ def fetch_all_financial_data(ticker: str, sector: str) -> str:
 
 data_agent = LlmAgent(
     name="data_agent",
-    model=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"),
-    instruction="""You are a financial data agent. Given a stock ticker and sector, \
-fetch the company's financial statements, market data, and sector growth rate using \
-the available tools. Return all data in a structured format.
-
-Call fetch_all_financial_data(ticker, sector) with the ticker and sector provided by \
-the user. Output the raw JSON result exactly as returned by the tool — do not modify, \
-summarize, or wrap it in markdown. Output ONLY the JSON string.""",
+    model=LiteLlm(model="groq/llama-3.1-8b-instant"),
+    instruction="""Call fetch_all_financial_data(ticker, sector) EXACTLY ONCE.
+Use the ticker and sector from the user message.
+After the tool returns, immediately output the raw JSON string it returned.
+Do not call the tool again.
+Do not add any commentary, analysis, explanation, or markdown.
+Your entire response must be the raw JSON string from the tool and nothing else.""",
     tools=[fetch_all_financial_data],
     output_key="temp:financial_data",
 )
