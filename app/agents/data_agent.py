@@ -151,15 +151,22 @@ def fetch_all_financial_data(ticker: str, sector: str) -> str:
     return json.dumps(result)
 
 
-data_agent = LlmAgent(
-    name="data_agent",
-    model=LiteLlm(model="groq/llama-3.1-8b-instant"),
-    instruction="""Call fetch_all_financial_data(ticker, sector) EXACTLY ONCE.
+def create_data_agent() -> LlmAgent:
+    return LlmAgent(
+        name="data_agent",
+        model=LiteLlm(
+            model="groq/llama-3.3-70b-versatile",
+            api_key=os.environ.get("GROQ_API_KEY"),
+        ),
+        instruction="""Call fetch_all_financial_data(ticker, sector) EXACTLY ONCE.
 Use the ticker and sector from the user message.
 After the tool returns, immediately output the raw JSON string it returned.
 Do not call the tool again.
 Do not add any commentary, analysis, explanation, or markdown.
 Your entire response must be the raw JSON string from the tool and nothing else.""",
-    tools=[fetch_all_financial_data],
-    output_key="temp:financial_data",
-)
+        tools=[fetch_all_financial_data],
+        output_key="temp:financial_data",
+    )
+
+
+data_agent = create_data_agent()

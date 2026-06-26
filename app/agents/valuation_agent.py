@@ -1,7 +1,6 @@
 """Valuation agent — computes WACC, cost of equity, DCF intrinsic value, and verdict."""
 import json
 import os
-import statistics
 
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
@@ -16,70 +15,57 @@ def _c(value):
     return value / _CRORE if value is not None else None
 
 
-def _parse_json(raw: str) -> dict:
-    text = raw.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        text = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
-    return json.loads(text)
-
-
-def calculate_cost_of_capital(financial_data_json: str) -> str:
+def calculate_cost_of_capital(
+    beta: float,
+    risk_free_rate: float,
+    market_return: float,
+    interest_expense: float,
+    total_non_current_liabilities: float,
+    shareholders_equity: float,
+    tax_expense: float,
+    pretax_income: float,
+) -> str:
     """Compute WACC, cost of equity (Ke), and cost of debt (Kd) using CAPM.
 
-    Uses the book-value weights from the current fiscal year.
-    Risk-free rate and market return are read from the financial data
-    (defaulting to Indian market assumptions: Rf=6.85%, Rm=12%).
-
-    Args:
-        financial_data_json: JSON string from fetch_all_financial_data.
-            Required fields: interest_expense, total_non_current_liabilities,
-            shareholders_equity, tax_expense, pretax_income, beta,
-            risk_free_rate, market_return.
+    Monetary parameters (interest_expense, total_non_current_liabilities,
+    shareholders_equity, tax_expense, pretax_income) are raw INR as returned
+    by yfinance. beta, risk_free_rate, and market_return are decimals.
 
     Returns:
-        JSON string with ke, kd (post-tax), wacc, weights, and CAPM breakdown.
+        JSON string with top-level ke, kd, wacc fields plus breakdown details.
     """
     try:
-        d = _parse_json(financial_data_json)
-    except (json.JSONDecodeError, ValueError) as exc:
-        return json.dumps({"error": f"Failed to parse financial_data_json: {exc}"})
+        ie  = _c(interest_expense)
+        ltd = _c(total_non_current_liabilities)
+        eq  = _c(shareholders_equity)
+        te  = _c(tax_expense)
+        pi  = _c(pretax_income)
 
-    try:
-        interest_expense  = _c(d["interest_expense"])
-        book_value_debt   = _c(d["total_non_current_liabilities"])
-        book_value_equity = _c(d["shareholders_equity"])
-        tax_expense       = _c(d["tax_expense"])
-        pretax_income     = _c(d["pretax_income"])
-        risk_free_rate    = float(d.get("risk_free_rate", 0.0685))
-        beta              = float(d["beta"])
-        market_return     = float(d.get("market_return", 0.12))
-
-        if pretax_income == 0:
+        if pi == 0:
             return json.dumps({"error": "pretax_income is zero — cannot compute tax rate"})
-        if not book_value_debt or book_value_debt == 0:
-            return json.dumps({"error": "book_value_debt is zero — cannot compute cost of debt"})
+        if not ltd or ltd == 0:
+            return json.dumps({"error": "total_non_current_liabilities is zero — cannot compute cost of debt"})
 
-        tax_rate    = tax_expense / pretax_income
-        pre_tax_kd  = interest_expense / book_value_debt
+        tax_rate   = te / pi
+        pre_tax_kd = ie / ltd
 
         calc = CostOfCapitalCalculator()
 
-        ke = calc.capm_cost_of_equity(risk_free_rate, beta, market_return)
-        kd = calc.post_tax_cost_of_debt(pre_tax_kd, tax_rate)
-        wd = calc.weight_of_debt(book_value_debt, book_value_equity)
-        we = calc.weight_of_equity(book_value_debt, book_value_equity)
+        ke   = calc.capm_cost_of_equity(risk_free_rate, beta, market_return)
+        kd   = calc.post_tax_cost_of_debt(pre_tax_kd, tax_rate)
+        wd   = calc.weight_of_debt(ltd, eq)
+        we   = calc.weight_of_equity(ltd, eq)
         wacc = calc.wacc(wd, kd, we, ke)
 
         return json.dumps({
             "tool": "calculate_cost_of_capital",
             "capm_breakdown": {
-                "formula":            "Ke = Rf + Beta × (Rm - Rf)",
-                "risk_free_rate":     risk_free_rate,
-                "beta":               beta,
-                "market_return":      market_return,
+                "formula":             "Ke = Rf + Beta × (Rm - Rf)",
+                "risk_free_rate":      risk_free_rate,
+                "beta":                beta,
+                "market_return":       market_return,
                 "equity_risk_premium": round(market_return - risk_free_rate, 6),
-                "ke":                 ke,
+                "ke":                  ke,
             },
             "cost_of_debt": {
                 "pre_tax_kd":  round(pre_tax_kd, 6),
@@ -120,8 +106,8 @@ def run_dcf_valuation(
     Args:
         fcfe: Validated FCFE in crore (from run_cashflow_analysis).
         fcff: Validated FCFF in crore (from run_cashflow_analysis).
-        ke: Cost of equity as decimal (from calculate_cost_of_capital).
-        wacc: WACC as decimal (from calculate_cost_of_capital).
+        ke: Cost of equity as decimal (from calculate_cost_of_capital "ke" field).
+        wacc: WACC as decimal (from calculate_cost_of_capital "wacc" field).
         growth_rate: Near-term sector growth rate as decimal (from financial data).
         shares_outstanding: Shares outstanding in crore (from financial data).
         current_price: Current market price in INR per share (from financial data).
@@ -188,14 +174,14 @@ def run_dcf_valuation(
                 "years":                years,
             },
             "equity_valuation": {
-                "forecasted_fcfe":       [round(v, 2) for v in forecasted_fcfe],
+                "forecasted_fcfe":        [round(v, 2) for v in forecasted_fcfe],
                 "intrinsic_equity_value": round(equity_value, 2),
                 "intrinsic_share_price":  share_price,
                 "current_market_price":   current_price,
                 "verdict":                verdict,
             },
             "enterprise_valuation": {
-                "forecasted_fcff":           [round(v, 2) for v in forecasted_fcff],
+                "forecasted_fcff":            [round(v, 2) for v in forecasted_fcff],
                 "intrinsic_enterprise_value": round(enterprise_value, 2),
             },
             "sensitivity_analysis": sensitivity_str,
@@ -205,10 +191,14 @@ def run_dcf_valuation(
         return json.dumps({"error": f"DCF valuation failed: {exc}"})
 
 
-valuation_agent = LlmAgent(
-    name="valuation_agent",
-    model=LiteLlm(model="groq/llama-3.1-8b-instant"),
-    instruction="""You are a valuation agent. Given financial analysis results and \
+def create_valuation_agent() -> LlmAgent:
+    return LlmAgent(
+        name="valuation_agent",
+        model=LiteLlm(
+            model="groq/llama-3.3-70b-versatile",
+            api_key=os.environ.get("GROQ_API_KEY"),
+        ),
+        instruction="""You are a valuation agent. Given financial analysis results and \
 market data, calculate the intrinsic value of the company using DCF methodology. \
 Always use deterministic tools for all calculations. Never state a valuation verdict \
 without running the calculator first.
@@ -220,25 +210,42 @@ You have the following analysis results:
 {temp:analysis_results}
 
 Your tasks:
-1. Call calculate_cost_of_capital with financial_data_json set to the JSON from \
-{temp:financial_data} to get ke and wacc.
 
-2. Extract from {temp:analysis_results}:
-   - fcfe = the "validated_fcfe" value from the "fcfe" section of "cashflow_analysis"
-   - fcff = the "validated_fcff" value from the "fcff" section of "cashflow_analysis"
+1. Call calculate_cost_of_capital by extracting these individual values from \
+{temp:financial_data} and passing them as separate named parameters:
+   - beta (decimal, e.g. 0.8)
+   - risk_free_rate (decimal, default 0.0685 if missing)
+   - market_return (decimal, default 0.12 if missing)
+   - interest_expense (raw INR)
+   - total_non_current_liabilities (raw INR)
+   - shareholders_equity (raw INR)
+   - tax_expense (raw INR)
+   - pretax_income (raw INR)
 
-3. Extract from {temp:financial_data}:
-   - growth_rate (sector growth rate)
+2. From the calculate_cost_of_capital result, extract:
+   - ke: read the top-level "ke" field. Do NOT default to 0 — if it is missing \
+or zero, the tool returned an error; check the result for an "error" key first.
+   - wacc: read the top-level "wacc" field. Do NOT default to 0.
+
+3. From {temp:analysis_results}, extract:
+   - fcfe = cashflow_analysis → fcfe → validated_fcfe
+   - fcff = cashflow_analysis → fcff → validated_fcff
+
+4. From {temp:financial_data}, extract:
+   - growth_rate (sector growth rate, decimal)
    - shares_outstanding (in crore)
-   - current_price (current market price in INR)
+   - current_price (current market price in INR per share)
 
-4. Call run_dcf_valuation with fcfe, fcff, ke, wacc, growth_rate, shares_outstanding, \
-current_price, and terminal_growth_rate=0.065.
+5. Call run_dcf_valuation with fcfe, fcff, ke, wacc, growth_rate, \
+shares_outstanding, current_price, and terminal_growth_rate=0.065.
 
 After both tools return, combine their results into one JSON object with keys \
 "cost_of_capital" and "dcf_valuation". Output ONLY the combined JSON — no markdown, \
 no explanation text.""",
-    tools=[calculate_cost_of_capital, run_dcf_valuation],
-    output_key="temp:valuation_results",
-    include_contents="none",
-)
+        tools=[calculate_cost_of_capital, run_dcf_valuation],
+        output_key="temp:valuation_results",
+        include_contents="none",
+    )
+
+
+valuation_agent = create_valuation_agent()

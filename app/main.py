@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()  # Must be before any other app imports
+
 """Entry point for the equity research agent pipeline.
 
 Usage:
@@ -70,6 +73,8 @@ async def run_pipeline(ticker: str, sector: str) -> str:
                 if current_author is not None:
                     print(f"\n[{current_author}] finished")
                     print(f"[state] keys so far: {sorted(accumulated_state.keys()) or '(none)'}")
+                    print("[pipeline] Waiting 60s for TPM limit to reset...")
+                    await asyncio.sleep(60)
                 current_author = author
                 print(f"\n{_SEP}")
                 print(f"[{author}] started")
