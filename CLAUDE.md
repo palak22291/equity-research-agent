@@ -50,6 +50,10 @@ This exists because LLM floating-point reasoning is non-deterministic and unaudi
 - FCFF and FCFE must each be computed via **3 independent methods** that cross-validate against each other. A discrepancy beyond tolerance must raise an error, not silently pick one result.
 - Calculators must be **generic** — they accept financial inputs as parameters and work for any company. Never hardcode company names, ticker symbols, or company-specific constants inside calculator logic.
 
+## Security
+
+All user inputs (ticker, sector, beta) are validated via `app/security/guardrails.py` before entering the pipeline. No raw user input reaches the LLM or calculators directly.
+
 ## Before Implementing Any Feature
 
 Always read `specs/equity_research_agent.md` before implementing a new feature or agent. Specs define the expected inputs, outputs, and validation criteria that tests must enforce.

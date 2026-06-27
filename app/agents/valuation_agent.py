@@ -97,7 +97,7 @@ def run_dcf_valuation(
     growth_rate: float,
     shares_outstanding: float,
     current_price: float,
-    terminal_growth_rate: float = 0.065,
+    terminal_growth_rate: float = 0.08,
     years: int = 3,
 ) -> str:
     """Run DCF valuation: compute intrinsic share price (FCFE/Ke method),
@@ -111,7 +111,7 @@ def run_dcf_valuation(
         growth_rate: Near-term sector growth rate as decimal (from financial data).
         shares_outstanding: Shares outstanding in crore (from financial data).
         current_price: Current market price in INR per share (from financial data).
-        terminal_growth_rate: Long-run nominal GDP growth rate (default: 0.065 for India).
+        terminal_growth_rate: Long-run nominal growth rate (default: 0.08, pharma GDP proxy).
         years: Forecast horizon in years (default: 3).
 
     Returns:
@@ -240,10 +240,11 @@ Do NOT multiply or divide by 10,000,000.
    - current_price (current market price in INR per share)
 
 5. Determine terminal_growth_rate before calling run_dcf_valuation:
-   - Default: terminal_growth_rate = 0.065
-   - If ke from calculate_cost_of_capital is less than or equal to growth_rate (0.09), \
-use terminal_growth_rate = ke - 0.01 instead of 0.065. This prevents the Gordon \
-Growth model from failing when beta is very low.
+   - Default for pharmaceuticals: terminal_growth_rate = 0.08 \
+(long-run nominal GDP proxy for the pharma sector).
+   - Only if ke from calculate_cost_of_capital is less than or equal to 0.08, \
+use terminal_growth_rate = ke - 0.01 instead. This prevents the Gordon \
+Growth model from failing when ke is very low.
    Then call run_dcf_valuation with fcfe, fcff, ke, wacc, growth_rate, \
 shares_outstanding, current_price, and the terminal_growth_rate determined above.
 

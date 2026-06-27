@@ -5,8 +5,8 @@ methods each, and prints results as JSON.
 
 Cross-validation never crashes. When methods disagree beyond tolerance:
   - best_estimate_fcff / best_estimate_fcfe: average of the two closest methods
-  - cross_validation_warning: message describing the disagreement
-  - large_spread_warning: true when spread > 50 crore (regardless of tolerance)
+  - data_quality_note: message describing the disagreement
+  - large_spread_flag: true when spread > 50 crore (regardless of tolerance)
 
 Required input keys (all monetary values in raw INR as returned by yfinance provider):
   net_income, non_cash_expenses, cfo, capex, ebit, interest_expense,
@@ -54,16 +54,16 @@ def _cv_section(label: str, v1: float, v2: float, v3: float, tolerance: float) -
     section = {
         "spread": spread,
         f"best_estimate_{label}": best,
-        "cross_validation": "passed" if spread <= tolerance else "warning",
+        "cross_validation": "passed" if spread <= tolerance else "approximate",
     }
     if spread > tolerance:
-        section["cross_validation_warning"] = (
-            f"{label.upper()} methods disagree by {spread:.2f} crore "
-            f"(tolerance {tolerance} crore). Methods: {v1}, {v2}, {v3}. "
-            "Using average of two closest methods as best estimate."
+        section["data_quality_note"] = (
+            f"{label.upper()} methods differ by {spread:.2f} crore "
+            f"(tolerance {tolerance} crore). Method values: {v1}, {v2}, {v3}. "
+            "Best estimate uses average of two closest methods."
         )
     if spread > _LARGE_SPREAD_THRESHOLD:
-        section["large_spread_warning"] = True
+        section["large_spread_flag"] = True
     return section
 
 
@@ -115,7 +115,7 @@ def main():
     overall_status = (
         "passed"
         if fcff_cv["cross_validation"] == "passed" and fcfe_cv["cross_validation"] == "passed"
-        else "warning"
+        else "approximate"
     )
 
     result = {

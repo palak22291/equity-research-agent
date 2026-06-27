@@ -35,7 +35,7 @@ You have the following data to synthesize:
 Write a complete equity research report in markdown with these sections:
 
 ## [Company Name] — Equity Research Report
-**Ticker:** | **Sector:** | **Fiscal Year End:** | **Report Date:** [today]
+**Ticker:** | **Sector:** | **Fiscal Year End:** | **Report Date:** [use the fiscal_year_end date from the financial data — do not use today's date]
 
 ### 1. Company Overview
 One paragraph describing the company and its business based on available data.

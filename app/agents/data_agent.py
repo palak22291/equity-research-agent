@@ -48,7 +48,7 @@ def _get_col(df, col_index, *labels):
     return None
 
 
-def fetch_all_financial_data(ticker: str, sector: str) -> str:
+def fetch_all_financial_data(ticker: str, sector: str, beta_override: float = 0.0) -> str:
     """Fetch complete financial data for a company: income statement, balance sheet,
     cash flow statement, market data, sector growth rate, and year-over-year
     balance sheet deltas needed for free cash flow calculations.
@@ -58,6 +58,8 @@ def fetch_all_financial_data(ticker: str, sector: str) -> str:
                 Indian stocks without an exchange suffix get .NS appended automatically.
         sector: Business sector (e.g. "pharmaceuticals", "it", "banking", "fmcg",
                 "automobiles", "telecom", "metals", "cement", "power", "healthcare").
+        beta_override: If > 0, use this value instead of the yfinance beta.
+                       Useful when the analyst has a custom beta estimate.
 
     Returns:
         JSON string with all financial fields needed for ratio analysis,
@@ -138,9 +140,11 @@ def fetch_all_financial_data(ticker: str, sector: str) -> str:
         # market data
         "current_price": market["current_price"],
         "shares_outstanding": market["shares_outstanding"],
-        "beta": market["beta"],
+        "beta": beta_override if beta_override > 0 else market["beta"],
+        "beta_source": "user_provided" if beta_override > 0 else "yfinance",
         "market_cap": market["market_cap"],
         # year-over-year balance sheet deltas (raw INR)
+        **({"beta_override_note": f"yfinance beta ({_r2(market['beta'])}) replaced by analyst-provided beta ({beta_override})"} if beta_override > 0 else {}),
         "increase_in_current_assets": delta_ca,
         "increase_in_current_liabilities": delta_cl,
         "net_borrowing": net_borrowing,
@@ -160,6 +164,8 @@ def create_data_agent() -> LlmAgent:
         ),
         instruction="""Call fetch_all_financial_data(ticker, sector) EXACTLY ONCE.
 Use the ticker and sector from the user message.
+If the user message contains "beta_override=<value>", extract that number and pass it \
+as the beta_override argument to fetch_all_financial_data.
 After the tool returns, immediately output the raw JSON string it returned.
 Do not call the tool again.
 Do not add any commentary, analysis, explanation, or markdown.

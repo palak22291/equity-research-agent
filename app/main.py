@@ -8,6 +8,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 Usage:
     python3 -m app.main CIPLA pharmaceuticals
+    python3 -m app.main CIPLA pharmaceuticals 0.4468
     python3 -m app.main INFY it
     python3 -m app.main                          # prompts for ticker and sector
 
@@ -32,6 +33,7 @@ from google.adk.runners import InMemoryRunner
 from google.genai import types
 
 from app.agents.orchestrator import equity_research_orchestrator
+from app.security.guardrails import validate_beta, validate_sector, validate_ticker
 
 _SEP = "-" * 60
 
@@ -41,7 +43,7 @@ def _preview(text: str, limit: int = 300) -> str:
     return text[:limit] + "..." if len(text) > limit else text
 
 
-async def run_pipeline(ticker: str, sector: str) -> str:
+async def run_pipeline(ticker: str, sector: str, beta: float | None = None) -> str:
     """Run the full equity research pipeline and return the final markdown report."""
     runner = InMemoryRunner(
         agent=equity_research_orchestrator,
@@ -53,9 +55,13 @@ async def run_pipeline(ticker: str, sector: str) -> str:
         user_id="analyst",
     )
 
+    prompt = f"Analyze {ticker} in {sector} sector"
+    if beta is not None:
+        prompt += f" with beta_override={beta}"
+
     message = types.Content(
         role="user",
-        parts=[types.Part(text=f"Analyze {ticker} in {sector} sector")],
+        parts=[types.Part(text=prompt)],
     )
 
     print(f"\n{_SEP}")
@@ -145,9 +151,16 @@ async def run_pipeline(ticker: str, sector: str) -> str:
 
 
 def main():
+    beta: float | None = None
     if len(sys.argv) >= 3:
         ticker = sys.argv[1].upper()
         sector = sys.argv[2].lower()
+        if len(sys.argv) >= 4:
+            try:
+                beta = float(sys.argv[3])
+            except ValueError:
+                print(f"Error: beta must be a number, got '{sys.argv[3]}'")
+                sys.exit(1)
     elif len(sys.argv) == 2:
         ticker = sys.argv[1].upper()
         sector = input(f"Enter sector for {ticker} (e.g. pharmaceuticals, it, banking): ").strip().lower()
@@ -159,7 +172,18 @@ def main():
         print("Error: Set GROQ_API_KEY environment variable.")
         sys.exit(1)
 
-    report = asyncio.run(run_pipeline(ticker, sector))
+    try:
+        ticker = validate_ticker(ticker)
+        sector = validate_sector(sector)
+        beta   = validate_beta(beta)
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
+
+    if beta is not None:
+        print(f"[pipeline] Using user-provided beta: {beta}")
+
+    report = asyncio.run(run_pipeline(ticker, sector, beta))
 
     if report:
         print(f"\n{'=' * 60}")
