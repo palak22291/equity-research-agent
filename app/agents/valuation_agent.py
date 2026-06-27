@@ -230,14 +230,22 @@ or zero, the tool returned an error; check the result for an "error" key first.
 3. From {temp:analysis_results}, extract:
    - fcfe = cashflow_analysis → fcfe → validated_fcfe
    - fcff = cashflow_analysis → fcff → validated_fcff
+   IMPORTANT: these values are already in INR crore (e.g. 2354.19). \
+Pass them directly to run_dcf_valuation without any division or conversion. \
+Do NOT multiply or divide by 10,000,000.
 
 4. From {temp:financial_data}, extract:
    - growth_rate (sector growth rate, decimal)
    - shares_outstanding (in crore)
    - current_price (current market price in INR per share)
 
-5. Call run_dcf_valuation with fcfe, fcff, ke, wacc, growth_rate, \
-shares_outstanding, current_price, and terminal_growth_rate=0.065.
+5. Determine terminal_growth_rate before calling run_dcf_valuation:
+   - Default: terminal_growth_rate = 0.065
+   - If ke from calculate_cost_of_capital is less than or equal to growth_rate (0.09), \
+use terminal_growth_rate = ke - 0.01 instead of 0.065. This prevents the Gordon \
+Growth model from failing when beta is very low.
+   Then call run_dcf_valuation with fcfe, fcff, ke, wacc, growth_rate, \
+shares_outstanding, current_price, and the terminal_growth_rate determined above.
 
 After both tools return, combine their results into one JSON object with keys \
 "cost_of_capital" and "dcf_valuation". Output ONLY the combined JSON — no markdown, \

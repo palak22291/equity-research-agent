@@ -1,5 +1,8 @@
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()  # Must be before any other app imports
+
+# Load .env from project root explicitly
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 """Entry point for the equity research agent pipeline.
 
@@ -9,13 +12,20 @@ Usage:
     python3 -m app.main                          # prompts for ticker and sector
 
 Requires:
-    GEMINI_API_KEY environment variable (or GOOGLE_API_KEY)
+    GROQ_API_KEY environment variable
 """
 import asyncio
 import os
 import sys
 
-# Use Gemini API key (not Vertex AI)
+import litellm
+
+# Retry up to 6 times on rate-limit errors, with exponential backoff.
+# Groq's TPM window resets every 60s; retries cover within-agent bursts.
+litellm.num_retries = 6
+litellm.retry_after = 5  # minimum seconds before first retry
+
+# Use Gemini key path (not Vertex AI)
 os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "FALSE")
 
 from google.adk.runners import InMemoryRunner
@@ -145,8 +155,8 @@ def main():
         ticker = input("Enter stock ticker (e.g. CIPLA, INFY): ").strip().upper()
         sector = input("Enter sector (e.g. pharmaceuticals, it, banking): ").strip().lower()
 
-    if not os.environ.get("GEMINI_API_KEY") and not os.environ.get("GOOGLE_API_KEY"):
-        print("Error: Set GEMINI_API_KEY (or GOOGLE_API_KEY) environment variable.")
+    if not os.environ.get("GROQ_API_KEY"):
+        print("Error: Set GROQ_API_KEY environment variable.")
         sys.exit(1)
 
     report = asyncio.run(run_pipeline(ticker, sector))

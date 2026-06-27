@@ -15,6 +15,12 @@ def create_report_agent() -> LlmAgent:
 and valuation results, write a professional equity research report in markdown format. \
 Be concise and factual. Always cite which tool produced each numerical result.
 
+IMPORTANT — units in this data:
+- All monetary values (FCFF, FCFE, equity value, enterprise value, revenue, etc.) \
+are in INR crore unless explicitly stated otherwise.
+- The intrinsic share price and current market price are in INR per share (not crore). \
+Do not scale or convert the share price.
+
 You have the following data to synthesize:
 
 **Financial Data (from fetch_all_financial_data tool):**

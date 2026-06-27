@@ -52,10 +52,16 @@ def main():
     tg_values            = data.get("tg_values") or _default_tg_values(terminal_growth_rate)
 
     if ke <= terminal_growth_rate:
+        # Fallback for low-beta stocks where ke barely clears growth_rate:
+        # back off terminal_growth_rate to ke - 1% so the Gordon model remains defined.
+        terminal_growth_rate = round(ke - 0.01, 4)
+        tg_values = _default_tg_values(terminal_growth_rate)
+
+    if ke <= terminal_growth_rate:
         print(json.dumps({
             "error": (
-                f"terminal_growth_rate ({terminal_growth_rate}) must be less than "
-                f"ke ({ke}) — Gordon Growth model is undefined."
+                f"ke ({ke}) is too low — even after fallback adjustment "
+                f"terminal_growth_rate ({terminal_growth_rate}) is not less than ke."
             )
         }))
         sys.exit(1)
