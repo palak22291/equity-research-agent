@@ -16,6 +16,16 @@ def _c(value):
     return value / _CRORE if value is not None else None
 
 
+def _best_estimate(v1: float, v2: float, v3: float) -> tuple[float, float]:
+    """Return (best_estimate, spread). Best estimate is the average of the two
+    methods closest to each other — robust when one method (often CFO-based on
+    live data) diverges. Spread is max - min across all three."""
+    pairs = [(abs(v1 - v2), v1, v2), (abs(v1 - v3), v1, v3), (abs(v2 - v3), v2, v3)]
+    _, a, b = min(pairs, key=lambda x: x[0])
+    spread = round(max(v1, v2, v3) - min(v1, v2, v3), 2)
+    return round((a + b) / 2, 2), spread
+
+
 def run_ratio_analysis(
     total_assets: float,
     current_assets: float,
@@ -155,42 +165,51 @@ def run_cashflow_analysis(
         tax_rate = te / pi
 
         calc = CashFlowCalculator()
-
-        try:
-            fcff = calc.validated_fcff(
-                net_income=ni,
-                non_cash_expenses=nce,
-                increase_in_current_assets=dca,
-                increase_in_current_liabilities=dcl,
-                interest=ie,
-                tax_rate=tax_rate,
-                capex=capex_c,
-                cfo=cfo_c,
-                ebit=eb,
-                tolerance=500.0,
-            )
-        except ValueError as exc:
-            return json.dumps({"error": f"FCFF cross-validation failed: {exc}"})
-
-        try:
-            fcfe = calc.validated_fcfe(
-                net_income=ni,
-                non_cash_expenses=nce,
-                increase_in_current_assets=dca,
-                increase_in_current_liabilities=dcl,
-                interest=ie,
-                tax_rate=tax_rate,
-                capex=capex_c,
-                cfo=cfo_c,
-                ebit=eb,
-                ocf=cfo_c,
-                net_borrowing=nb,
-                tolerance=500.0,
-            )
-        except ValueError as exc:
-            return json.dumps({"error": f"FCFE cross-validation failed: {exc}"})
-
         nopat = calc.nopat(eb, tax_rate)
+        tolerance = 500.0
+
+        # --- FCFF: 3 independent methods, then a robust best estimate ---
+        # On live yfinance data the CFO-based method often diverges (different
+        # working-capital definitions), so rather than failing the whole pipeline
+        # we use the average of the two closest methods and surface a note.
+        fcff_m1 = round(calc.fcff_from_net_income(ni, nce, dca, dcl, ie, tax_rate, capex_c), 2)
+        fcff_m2 = round(calc.fcff_from_nopat(nopat, nce, dca, dcl, capex_c), 2)
+        fcff_m3 = round(calc.fcff_from_cfo(cfo_c, ie, tax_rate, capex_c), 2)
+        fcff_best, fcff_spread = _best_estimate(fcff_m1, fcff_m2, fcff_m3)
+
+        # --- FCFE: method 2 feeds off fcff_best to avoid propagating FCFF spread ---
+        fcfe_m1 = round(calc.fcfe_from_net_income(ni, nce, dca, dcl, capex_c, nb), 2)
+        fcfe_m2 = round(calc.fcfe_from_fcff(fcff_best, ie, tax_rate, nb), 2)
+        fcfe_m3 = round(calc.fcfe_from_ocf(cfo_c, capex_c, nb), 2)
+        fcfe_best, fcfe_spread = _best_estimate(fcfe_m1, fcfe_m2, fcfe_m3)
+
+        within_tol = fcff_spread <= tolerance and fcfe_spread <= tolerance
+        cross_validation = "passed" if within_tol else "approximate"
+
+        fcff_block = {
+            "method_1_net_income": fcff_m1,
+            "method_2_nopat":      fcff_m2,
+            "method_3_cfo":        fcff_m3,
+            "spread":              fcff_spread,
+            "validated_fcff":      fcff_best,
+        }
+        fcfe_block = {
+            "method_1_net_income": fcfe_m1,
+            "method_2_fcff":       fcfe_m2,
+            "method_3_ocf":        fcfe_m3,
+            "spread":              fcfe_spread,
+            "validated_fcfe":      fcfe_best,
+        }
+        if fcff_spread > tolerance:
+            fcff_block["data_quality_note"] = (
+                f"FCFF methods differ by {fcff_spread} crore (tolerance {tolerance}). "
+                f"validated_fcff is the average of the two closest methods."
+            )
+        if fcfe_spread > tolerance:
+            fcfe_block["data_quality_note"] = (
+                f"FCFE methods differ by {fcfe_spread} crore (tolerance {tolerance}). "
+                f"validated_fcfe is the average of the two closest methods."
+            )
 
         return json.dumps({
             "tool": "run_cashflow_analysis",
@@ -204,25 +223,9 @@ def run_cashflow_analysis(
                 "increase_in_current_liabilities": round(dcl, 2),
                 "net_borrowing":                   round(nb, 2),
             },
-            "fcff": {
-                "method_1_net_income": round(calc.fcff_from_net_income(
-                    ni, nce, dca, dcl, ie, tax_rate, capex_c
-                ), 2),
-                "method_2_nopat": round(calc.fcff_from_nopat(
-                    nopat, nce, dca, dcl, capex_c
-                ), 2),
-                "method_3_cfo": round(calc.fcff_from_cfo(cfo_c, ie, tax_rate, capex_c), 2),
-                "validated_fcff": round(fcff, 2),
-            },
-            "fcfe": {
-                "method_1_net_income": round(calc.fcfe_from_net_income(
-                    ni, nce, dca, dcl, capex_c, nb
-                ), 2),
-                "method_2_fcff": round(calc.fcfe_from_fcff(fcff, ie, tax_rate, nb), 2),
-                "method_3_ocf":  round(calc.fcfe_from_ocf(cfo_c, capex_c, nb), 2),
-                "validated_fcfe": round(fcfe, 2),
-            },
-            "cross_validation": "passed",
+            "fcff": fcff_block,
+            "fcfe": fcfe_block,
+            "cross_validation": cross_validation,
         }, indent=2)
 
     except Exception as exc:

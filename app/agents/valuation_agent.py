@@ -97,7 +97,7 @@ def run_dcf_valuation(
     growth_rate: float,
     shares_outstanding: float,
     current_price: float,
-    terminal_growth_rate: float = 0.08,
+    terminal_growth_rate: float = 0.0,
     years: int = 3,
 ) -> str:
     """Run DCF valuation: compute intrinsic share price (FCFE/Ke method),
@@ -111,7 +111,10 @@ def run_dcf_valuation(
         growth_rate: Near-term sector growth rate as decimal (from financial data).
         shares_outstanding: Shares outstanding in crore (from financial data).
         current_price: Current market price in INR per share (from financial data).
-        terminal_growth_rate: Long-run nominal growth rate (default: 0.08, pharma GDP proxy).
+        terminal_growth_rate: Pass 0.0 (or omit) to let this tool select it
+            deterministically — DO NOT compute it in the caller. The tool uses a
+            0.08 pharma long-run nominal GDP proxy, backing off to keep the Gordon
+            Growth model defined on both the FCFE/Ke and FCFF/WACC sides.
         years: Forecast horizon in years (default: 3).
 
     Returns:
@@ -119,12 +122,24 @@ def run_dcf_valuation(
         Overvalued), intrinsic_enterprise_value, and sensitivity_analysis grid.
     """
     try:
-        if ke <= terminal_growth_rate:
+        if ke <= 0 or wacc <= 0:
             return json.dumps({
-                "error": (
-                    f"terminal_growth_rate ({terminal_growth_rate}) must be less than "
-                    f"ke ({ke}) — Gordon Growth model is undefined."
-                )
+                "error": f"ke ({ke}) and wacc ({wacc}) must both be positive — "
+                         "check the calculate_cost_of_capital output."
+            })
+
+        # --- Deterministic terminal growth selection (never done by the LLM) ---
+        # tg must stay below BOTH ke and wacc so the Gordon Growth terminal value
+        # is defined for the equity (FCFE/Ke) and enterprise (FCFF/WACC) methods.
+        floor_rate = min(ke, wacc)
+        if terminal_growth_rate <= 0.0:
+            terminal_growth_rate = 0.08  # pharma long-run nominal GDP proxy
+        if terminal_growth_rate >= floor_rate:
+            terminal_growth_rate = round(floor_rate - 0.01, 4)
+        if terminal_growth_rate <= 0 or terminal_growth_rate >= floor_rate:
+            return json.dumps({
+                "error": f"Cannot select a valid terminal growth rate below "
+                         f"min(ke={ke}, wacc={wacc}); rates are too low for the model."
             })
 
         calc = DCFCalculator()
@@ -239,14 +254,14 @@ Do NOT multiply or divide by 10,000,000.
    - shares_outstanding (in crore)
    - current_price (current market price in INR per share)
 
-5. Determine terminal_growth_rate before calling run_dcf_valuation:
-   - Default for pharmaceuticals: terminal_growth_rate = 0.08 \
-(long-run nominal GDP proxy for the pharma sector).
-   - Only if ke from calculate_cost_of_capital is less than or equal to 0.08, \
-use terminal_growth_rate = ke - 0.01 instead. This prevents the Gordon \
-Growth model from failing when ke is very low.
-   Then call run_dcf_valuation with fcfe, fcff, ke, wacc, growth_rate, \
-shares_outstanding, current_price, and the terminal_growth_rate determined above.
+5. Call run_dcf_valuation with fcfe, fcff, ke, wacc, growth_rate, \
+shares_outstanding, current_price, and years=3.
+   CRITICAL: Do NOT pass terminal_growth_rate (omit it, or pass 0.0) — the tool \
+selects it deterministically. NEVER perform arithmetic in tool arguments: every \
+argument value must be a single literal number copied directly from a previous \
+tool's output. Do not write expressions like "ke - 0.01" or "0.07 - 0.01" — \
+these are invalid and will fail. If a value is not available as a literal number, \
+re-read the earlier tool output to find it.
 
 After both tools return, combine their results into one JSON object with keys \
 "cost_of_capital" and "dcf_valuation". Output ONLY the combined JSON — no markdown, \
