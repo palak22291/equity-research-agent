@@ -43,6 +43,36 @@ def _preview(text: str, limit: int = 300) -> str:
     return text[:limit] + "..." if len(text) > limit else text
 
 
+# Deterministic explanatory note for the DCF sensitivity grid. Appended in Python
+# (not by the LLM) so it is always present and never consumes tokens. Cells where
+# cost of equity approaches terminal growth rate blow up / are undefined (the
+# Gordon Growth denominator ke - g → 0), so the grid shows them as null.
+_SENSITIVITY_CAVEAT = (
+    "> *Note: cells where cost of equity approaches the terminal growth rate are "
+    "mathematically undefined and excluded (shown as null).*"
+)
+_SENSITIVITY_MARKER = "cost of equity approaches the terminal growth rate"
+
+
+def _inject_sensitivity_caveat(report: str) -> str:
+    """Insert the sensitivity-grid caveat at the end of Section 6, before Section 7.
+    Idempotent: does nothing if the note is already present, and is a no-op if the
+    report has no Section 6 sensitivity table."""
+    if not report or _SENSITIVITY_MARKER in report:
+        return report
+    if "Sensitivity Analysis" not in report:
+        return report
+
+    block = "\n" + _SENSITIVITY_CAVEAT + "\n"
+    # Prefer placing it just before the next section heading ("### 7" / "## 7").
+    for heading in ("\n### 7", "\n## 7", "\n---"):
+        idx = report.find(heading)
+        if idx != -1:
+            return report[:idx] + "\n" + _SENSITIVITY_CAVEAT + "\n" + report[idx:]
+    # Fallback: append at the end of the report.
+    return report.rstrip() + "\n" + block
+
+
 async def run_pipeline(ticker: str, sector: str, beta: float | None = None) -> str:
     """Run the full equity research pipeline and return the final markdown report."""
     runner = InMemoryRunner(
@@ -146,6 +176,9 @@ async def run_pipeline(ticker: str, sector: str, beta: float | None = None) -> s
         val = accumulated_state.get(key, "")
         if val and '"error"' in str(val)[:100]:
             print(f"[WARN] {key} contains an error payload: {_preview(str(val), 200)}")
+
+    # Deterministically annotate the sensitivity grid (never left to the LLM).
+    final_report = _inject_sensitivity_caveat(final_report)
 
     return final_report
 
