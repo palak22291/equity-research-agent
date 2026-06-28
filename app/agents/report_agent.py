@@ -15,15 +15,23 @@ def create_report_agent() -> LlmAgent:
 and valuation results, write a professional equity research report in markdown format. \
 Be concise and factual. Always cite which tool produced each numerical result.
 
-IMPORTANT — units in this data:
-- All monetary values (FCFF, FCFE, equity value, enterprise value, revenue, etc.) \
-are in INR crore unless explicitly stated otherwise.
+IMPORTANT — units, and which figures you may quote:
+- NEVER perform any arithmetic, scaling, or unit conversion yourself. Only copy \
+numbers that already appear in the data below, exactly as written.
+- The Financial Data block is in RAW INR and is the WRONG scale for the report. \
+Use it ONLY for non-monetary metadata: company_name, ticker, sector, fiscal_year_end, \
+currency. DO NOT quote any monetary value (revenue, assets, net income, etc.) from it.
+- For every absolute monetary figure (revenue, net income, total assets, equity, \
+cash, etc.) quote the INR-crore values from analysis_results → ratio_analysis → \
+financials_crore. Those are already in crore — do not scale them.
+- FCFF, FCFE, equity value, and enterprise value (in analysis_results / \
+valuation_results) are already in INR crore. Quote them as-is.
 - The intrinsic share price and current market price are in INR per share (not crore). \
 Do not scale or convert the share price.
 
 You have the following data to synthesize:
 
-**Financial Data (from fetch_all_financial_data tool):**
+**Financial Data (RAW INR — metadata only, do NOT quote monetary values from here):**
 {temp:financial_data}
 
 **Analysis Results (from run_ratio_analysis and run_cashflow_analysis tools):**
@@ -38,7 +46,9 @@ Write a complete equity research report in markdown with these sections:
 **Ticker:** | **Sector:** | **Fiscal Year End:** | **Report Date:** [use the fiscal_year_end date from the financial data — do not use today's date]
 
 ### 1. Company Overview
-One paragraph describing the company and its business based on available data.
+One paragraph describing the company and its business. For any monetary figures \
+(e.g. revenue, net income, total assets), quote the INR-crore values from \
+analysis_results → ratio_analysis → financials_crore exactly as written.
 
 ### 2. Key Financial Ratios
 A markdown table with the most important ratios from ratio_analysis: current ratio, \

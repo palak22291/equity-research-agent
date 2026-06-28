@@ -80,6 +80,19 @@ def run_ratio_analysis(
 
         result = {
             "tool": "run_ratio_analysis",
+            # Absolute figures already converted to INR crore by _c() — the report
+            # agent must quote these (never the raw-INR values in financial_data).
+            "financials_crore": {
+                "total_revenue":        round(rev, 2),
+                "gross_profit":         round(gp, 2),
+                "net_income":           round(ni, 2),
+                "ebit":                 round(eb, 2),
+                "total_assets":         round(ta, 2),
+                "current_assets":       round(ca, 2),
+                "current_liabilities":  round(cl, 2),
+                "shareholders_equity":  round(eq, 2),
+                "cash":                 round(ch, 2),
+            },
             "liquidity": {
                 "current_ratio": r.current_ratio(ca, cl),
                 "quick_ratio":   r.quick_ratio(ch, ar, cl),
