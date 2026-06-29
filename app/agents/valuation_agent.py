@@ -100,26 +100,17 @@ def run_dcf_valuation(
     terminal_growth_rate: float = 0.0,
     years: int = 3,
 ) -> str:
-    """Run DCF valuation: compute intrinsic share price (FCFE/Ke method),
-    intrinsic enterprise value (FCFF/WACC method), and a sensitivity analysis grid.
+    """Run the DCF: intrinsic share price (FCFE/Ke), enterprise value (FCFF/WACC),
+    and a sensitivity grid. Copy literal numbers from prior tool outputs; never compute.
 
     Args:
-        fcfe: Validated FCFE in crore (from run_cashflow_analysis).
-        fcff: Validated FCFF in crore (from run_cashflow_analysis).
-        ke: Cost of equity as decimal (from calculate_cost_of_capital "ke" field).
-        wacc: WACC as decimal (from calculate_cost_of_capital "wacc" field).
-        growth_rate: Near-term sector growth rate as decimal (from financial data).
-        shares_outstanding: Shares outstanding in crore (from financial data).
-        current_price: Current market price in INR per share (from financial data).
-        terminal_growth_rate: Pass 0.0 (or omit) to let this tool select it
-            deterministically — DO NOT compute it in the caller. The tool uses a
-            0.08 pharma long-run nominal GDP proxy, backing off to keep the Gordon
-            Growth model defined on both the FCFE/Ke and FCFF/WACC sides.
-        years: Forecast horizon in years (default: 3).
+        fcfe, fcff: validated values in crore (run_cashflow_analysis).
+        ke, wacc: decimals (calculate_cost_of_capital).
+        growth_rate, shares_outstanding, current_price: from financial data.
+        terminal_growth_rate: pass 0.0 or omit — the tool selects it; do NOT compute it.
+        years: forecast horizon (default 3).
 
-    Returns:
-        JSON string with intrinsic_share_price, verdict (Undervalued/Fairly Valued/
-        Overvalued), intrinsic_enterprise_value, and sensitivity_analysis grid.
+    Returns JSON: intrinsic_share_price, verdict, intrinsic_enterprise_value, sensitivity_analysis.
     """
     try:
         if ke <= 0 or wacc <= 0:
@@ -212,6 +203,12 @@ def create_valuation_agent() -> LlmAgent:
         model=LiteLlm(
             model="groq/llama-3.3-70b-versatile",
             api_key=os.environ.get("GROQ_API_KEY"),
+            # Cap completion tokens (output is a ~600-token combined JSON). This is
+            # the agent that previously broke the 12k tokens-per-minute limit: it
+            # can make two tool-call rounds in one window, so keeping each request
+            # small (capped reservation + trimmed tool docstrings) lets both fit:
+            # worst case ~10.7k tokens/min, comfortably under the 12k limit.
+            max_tokens=1200,
         ),
         instruction="""You are a valuation agent. Given financial analysis results and \
 market data, calculate the intrinsic value of the company using DCF methodology. \

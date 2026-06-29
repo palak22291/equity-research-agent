@@ -42,6 +42,11 @@ def create_data_agent() -> LlmAgent:
         model=LiteLlm(
             model="groq/llama-3.3-70b-versatile",
             api_key=os.environ.get("GROQ_API_KEY"),
+            # Cap completion tokens so Groq reserves only what the output needs
+            # (this agent echoes a ~430-token JSON), keeping each request well
+            # under the 12k tokens-per-minute limit. Without a cap, Groq reserves
+            # a large default and inflates the per-request token count.
+            max_tokens=1200,
         ),
         instruction="""Call fetch_all_financial_data(ticker, sector) EXACTLY ONCE.
 Use the ticker and sector from the user message.

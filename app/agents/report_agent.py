@@ -10,6 +10,10 @@ def create_report_agent() -> LlmAgent:
         model=LiteLlm(
             model="groq/llama-3.3-70b-versatile",
             api_key=os.environ.get("GROQ_API_KEY"),
+            # Cap completion tokens to fit the ~900-token markdown report with
+            # headroom, keeping the single report request under Groq's 12k
+            # tokens-per-minute limit.
+            max_tokens=2000,
         ),
         instruction="""You are an equity research report writer. Given financial analysis \
 and valuation results, write a professional equity research report in markdown format. \
