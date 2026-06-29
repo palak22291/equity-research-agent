@@ -1,18 +1,17 @@
-"""Valuation agent — computes WACC, cost of equity, DCF intrinsic value, and verdict."""
-import json
+"""Valuation agent — computes WACC, cost of equity, DCF intrinsic value, and verdict.
+
+The tool functions are thin wrappers that invoke the Agent Skill scripts under
+app/skills/ as subprocesses; all deterministic math lives in those scripts.
+"""
 import os
 
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
 
-from app.calculators.cost_of_capital import CostOfCapitalCalculator
-from app.calculators.dcf import DCFCalculator
+from app.skills.runner import run_skill
 
-_CRORE = 10_000_000
-
-
-def _c(value):
-    return value / _CRORE if value is not None else None
+_COST_OF_CAPITAL_SKILL = "app/skills/cost-of-capital/scripts/calculate_cost_of_capital.py"
+_VALUATION_SKILL = "app/skills/valuation/scripts/calculate_valuation.py"
 
 
 def calculate_cost_of_capital(
@@ -34,59 +33,16 @@ def calculate_cost_of_capital(
     Returns:
         JSON string with top-level ke, kd, wacc fields plus breakdown details.
     """
-    try:
-        ie  = _c(interest_expense)
-        ltd = _c(total_non_current_liabilities)
-        eq  = _c(shareholders_equity)
-        te  = _c(tax_expense)
-        pi  = _c(pretax_income)
-
-        if pi == 0:
-            return json.dumps({"error": "pretax_income is zero — cannot compute tax rate"})
-        if not ltd or ltd == 0:
-            return json.dumps({"error": "total_non_current_liabilities is zero — cannot compute cost of debt"})
-
-        tax_rate   = te / pi
-        pre_tax_kd = ie / ltd
-
-        calc = CostOfCapitalCalculator()
-
-        ke   = calc.capm_cost_of_equity(risk_free_rate, beta, market_return)
-        kd   = calc.post_tax_cost_of_debt(pre_tax_kd, tax_rate)
-        wd   = calc.weight_of_debt(ltd, eq)
-        we   = calc.weight_of_equity(ltd, eq)
-        wacc = calc.wacc(wd, kd, we, ke)
-
-        return json.dumps({
-            "tool": "calculate_cost_of_capital",
-            "capm_breakdown": {
-                "formula":             "Ke = Rf + Beta × (Rm - Rf)",
-                "risk_free_rate":      risk_free_rate,
-                "beta":                beta,
-                "market_return":       market_return,
-                "equity_risk_premium": round(market_return - risk_free_rate, 6),
-                "ke":                  ke,
-            },
-            "cost_of_debt": {
-                "pre_tax_kd":  round(pre_tax_kd, 6),
-                "tax_rate":    round(tax_rate, 6),
-                "post_tax_kd": kd,
-            },
-            "weights": {
-                "wd": round(wd, 6),
-                "we": round(we, 6),
-            },
-            "wacc": {
-                "formula": "WACC = (Wd × Kd) + (We × Ke)",
-                "wacc":    wacc,
-            },
-            "ke":   ke,
-            "kd":   kd,
-            "wacc": wacc,
-        }, indent=2)
-
-    except Exception as exc:
-        return json.dumps({"error": f"Cost of capital calculation failed: {exc}"})
+    return run_skill(_COST_OF_CAPITAL_SKILL, {
+        "beta": beta,
+        "risk_free_rate": risk_free_rate,
+        "market_return": market_return,
+        "interest_expense": interest_expense,
+        "total_non_current_liabilities": total_non_current_liabilities,
+        "shareholders_equity": shareholders_equity,
+        "tax_expense": tax_expense,
+        "pretax_income": pretax_income,
+    })
 
 
 def run_dcf_valuation(
@@ -112,89 +68,17 @@ def run_dcf_valuation(
 
     Returns JSON: intrinsic_share_price, verdict, intrinsic_enterprise_value, sensitivity_analysis.
     """
-    try:
-        if ke <= 0 or wacc <= 0:
-            return json.dumps({
-                "error": f"ke ({ke}) and wacc ({wacc}) must both be positive — "
-                         "check the calculate_cost_of_capital output."
-            })
-
-        # --- Deterministic terminal growth selection (never done by the LLM) ---
-        # tg must stay below BOTH ke and wacc so the Gordon Growth terminal value
-        # is defined for the equity (FCFE/Ke) and enterprise (FCFF/WACC) methods.
-        floor_rate = min(ke, wacc)
-        if terminal_growth_rate <= 0.0:
-            terminal_growth_rate = 0.08  # pharma long-run nominal GDP proxy
-        if terminal_growth_rate >= floor_rate:
-            terminal_growth_rate = round(floor_rate - 0.01, 4)
-        if terminal_growth_rate <= 0 or terminal_growth_rate >= floor_rate:
-            return json.dumps({
-                "error": f"Cannot select a valid terminal growth rate below "
-                         f"min(ke={ke}, wacc={wacc}); rates are too low for the model."
-            })
-
-        calc = DCFCalculator()
-
-        def _default_ke_values(k: float):
-            step = 0.005
-            return sorted({round(k + i * step, 4) for i in range(-2, 3)})
-
-        def _default_tg_values(tg: float):
-            step = 0.01
-            return sorted({round(tg + i * step, 4) for i in range(-1, 2)})
-
-        ke_values = _default_ke_values(ke)
-        tg_values = _default_tg_values(terminal_growth_rate)
-
-        forecasted_fcfe  = calc.forecast_cashflows(fcfe, growth_rate, years)
-        equity_value     = calc.intrinsic_equity_value(forecasted_fcfe, ke, terminal_growth_rate)
-        share_price      = calc.intrinsic_share_price(equity_value, shares_outstanding)
-        verdict          = calc.valuation_verdict(share_price, current_price)
-
-        forecasted_fcff  = calc.forecast_cashflows(fcff, growth_rate, years)
-        enterprise_value = calc.intrinsic_enterprise_value(forecasted_fcff, wacc, terminal_growth_rate)
-
-        sensitivity = calc.sensitivity_analysis(
-            base_fcfe=fcfe,
-            ke_values=ke_values,
-            tg_values=tg_values,
-            shares_outstanding=shares_outstanding,
-            growth_rate=growth_rate,
-            years=years,
-        )
-        sensitivity_str = {
-            str(k): {str(tg): v for tg, v in row.items()}
-            for k, row in sensitivity.items()
-        }
-
-        return json.dumps({
-            "tool": "run_dcf_valuation",
-            "inputs": {
-                "fcfe":                 round(fcfe, 2),
-                "fcff":                 round(fcff, 2),
-                "ke":                   ke,
-                "wacc":                 wacc,
-                "growth_rate":          growth_rate,
-                "terminal_growth_rate": terminal_growth_rate,
-                "shares_outstanding":   shares_outstanding,
-                "years":                years,
-            },
-            "equity_valuation": {
-                "forecasted_fcfe":        [round(v, 2) for v in forecasted_fcfe],
-                "intrinsic_equity_value": round(equity_value, 2),
-                "intrinsic_share_price":  share_price,
-                "current_market_price":   current_price,
-                "verdict":                verdict,
-            },
-            "enterprise_valuation": {
-                "forecasted_fcff":            [round(v, 2) for v in forecasted_fcff],
-                "intrinsic_enterprise_value": round(enterprise_value, 2),
-            },
-            "sensitivity_analysis": sensitivity_str,
-        }, indent=2)
-
-    except Exception as exc:
-        return json.dumps({"error": f"DCF valuation failed: {exc}"})
+    return run_skill(_VALUATION_SKILL, {
+        "fcfe": fcfe,
+        "fcff": fcff,
+        "ke": ke,
+        "wacc": wacc,
+        "growth_rate": growth_rate,
+        "shares_outstanding": shares_outstanding,
+        "current_price": current_price,
+        "terminal_growth_rate": terminal_growth_rate,
+        "years": years,
+    })
 
 
 def create_valuation_agent() -> LlmAgent:

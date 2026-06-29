@@ -2,13 +2,16 @@
 """
 Accepts financial data as JSON via stdin, computes all ratios, prints results as JSON.
 
+Output schema matches the run_ratio_analysis tool contract consumed by the
+analysis/report agents (includes the `financials_crore` block the report agent
+quotes for absolute monetary figures).
+
 Required input keys (all monetary values in raw INR as returned by yfinance provider):
-  current_assets, current_liabilities, cash, accounts_receivable, inventory,
-  total_assets, total_non_current_liabilities, shareholders_equity,
+  total_assets, current_assets, inventory, cash, accounts_receivable,
+  current_liabilities, total_non_current_liabilities, shareholders_equity,
   total_revenue, gross_profit, net_income, ebit, interest_expense
 
 Optional input keys:
-  non_cash_expenses       -- raw INR; enables ebitda_margin
   current_price           -- price per share (no conversion needed)
   shares_outstanding      -- already in crore (as returned by get_market_data)
 """
@@ -32,83 +35,93 @@ def _c(value):
 def main():
     data = json.load(sys.stdin)
 
-    current_assets      = _c(data["current_assets"])
-    current_liabilities = _c(data["current_liabilities"])
-    cash                = _c(data["cash"])
-    accounts_receivable = _c(data["accounts_receivable"])
-    inventory           = _c(data["inventory"])
-    total_assets        = _c(data["total_assets"])
-    long_term_debt      = _c(data["total_non_current_liabilities"])
-    shareholders_equity = _c(data["shareholders_equity"])
-    total_revenue       = _c(data["total_revenue"])
-    gross_profit        = _c(data["gross_profit"])
-    net_income          = _c(data["net_income"])
-    ebit                = _c(data["ebit"])
-    interest_expense    = _c(data["interest_expense"])
-    non_cash_expenses   = _c(data.get("non_cash_expenses"))
+    try:
+        ca  = _c(data["current_assets"])
+        cl  = _c(data["current_liabilities"])
+        ch  = _c(data["cash"])
+        ar  = _c(data["accounts_receivable"])
+        inv = _c(data["inventory"])
+        ta  = _c(data["total_assets"])
+        ltd = _c(data["total_non_current_liabilities"])
+        eq  = _c(data["shareholders_equity"])
+        rev = _c(data["total_revenue"])
+        gp  = _c(data["gross_profit"])
+        ni  = _c(data["net_income"])
+        eb  = _c(data["ebit"])
+        ie  = _c(data["interest_expense"])
 
-    # Market data (already correct units from provider)
-    current_price      = data.get("current_price")       # INR per share, no conversion
-    shares_outstanding = data.get("shares_outstanding")  # crore
+        current_price      = data.get("current_price")       # INR per share, no conversion
+        shares_outstanding = data.get("shares_outstanding")  # crore
 
-    # Derived quantities
-    cogs         = total_revenue - gross_profit
-    fixed_assets = total_assets - current_assets
-    # For ROCE: all liabilities = total capital minus equity
-    total_liabilities = current_liabilities + long_term_debt
+        cogs         = rev - gp
+        fixed_assets = ta - ca
+        total_liab   = cl + ltd
 
-    c = RatioCalculator()
+        r = RatioCalculator()
 
-    npm = c.net_profit_margin(net_income, total_revenue)
-    at  = c.asset_turnover(total_revenue, total_assets)
-    em  = round(total_assets / shareholders_equity, 6) if shareholders_equity else None
+        npm = r.net_profit_margin(ni, rev)
+        at  = r.asset_turnover(rev, ta)
+        em  = round(ta / eq, 6) if eq else None
 
-    result = {
-        "liquidity": {
-            "current_ratio": c.current_ratio(current_assets, current_liabilities),
-            "quick_ratio":   c.quick_ratio(cash, accounts_receivable, current_liabilities),
-            "cash_ratio":    c.cash_ratio(cash, current_liabilities),
-        },
-        "solvency": {
-            "debt_to_equity":    c.debt_to_equity(current_liabilities, long_term_debt, shareholders_equity),
-            "interest_coverage": c.interest_coverage(ebit, interest_expense),
-            "debt_to_assets":    c.debt_to_assets(total_liabilities, total_assets),
-        },
-        "profitability": {
-            "gross_profit_margin": c.gross_profit_margin(gross_profit, total_revenue),
-            "ebit_margin":         c.ebit_margin(ebit, total_revenue),
-            "ebitda_margin":       (
-                c.ebitda_margin(ebit + non_cash_expenses, total_revenue)
-                if non_cash_expenses is not None else None
-            ),
-            "net_profit_margin":   npm,
-            "return_on_equity":    c.return_on_equity(net_income, shareholders_equity),
-            "return_on_assets":    c.return_on_assets(net_income, total_assets),
-            "roce":                c.roce(ebit, shareholders_equity, total_liabilities),
-        },
-        "efficiency": {
-            "asset_turnover":         at,
-            "inventory_turnover":     c.inventory_turnover(cogs, inventory),
-            "receivables_turnover":   c.receivables_turnover(total_revenue, accounts_receivable),
-            "fixed_asset_turnover":   c.fixed_asset_turnover(total_revenue, fixed_assets),
-            "days_sales_outstanding": c.days_sales_outstanding(accounts_receivable, total_revenue),
-        },
-        "dupont": {
-            "net_profit_margin": npm,
-            "asset_turnover":    at,
-            "equity_multiplier": round(em, 2) if em is not None else None,
-            "roe":               c.dupont_roe(npm, at, em) if em is not None else None,
-        },
-    }
-
-    if current_price is not None and shares_outstanding is not None:
-        eps_val = c.eps(net_income, shares_outstanding)
-        result["valuation"] = {
-            "eps":      eps_val,
-            "pe_ratio": c.pe_ratio(current_price, eps_val),
+        result = {
+            "tool": "run_ratio_analysis",
+            # Absolute figures already converted to INR crore by _c() — the report
+            # agent must quote these (never the raw-INR values in financial_data).
+            "financials_crore": {
+                "total_revenue":        round(rev, 2),
+                "gross_profit":         round(gp, 2),
+                "net_income":           round(ni, 2),
+                "ebit":                 round(eb, 2),
+                "total_assets":         round(ta, 2),
+                "current_assets":       round(ca, 2),
+                "current_liabilities":  round(cl, 2),
+                "shareholders_equity":  round(eq, 2),
+                "cash":                 round(ch, 2),
+            },
+            "liquidity": {
+                "current_ratio": r.current_ratio(ca, cl),
+                "quick_ratio":   r.quick_ratio(ch, ar, cl),
+                "cash_ratio":    r.cash_ratio(ch, cl),
+            },
+            "solvency": {
+                "debt_to_equity":    r.debt_to_equity(cl, ltd, eq),
+                "interest_coverage": r.interest_coverage(eb, ie),
+                "debt_to_assets":    r.debt_to_assets(total_liab, ta),
+            },
+            "profitability": {
+                "gross_profit_margin": r.gross_profit_margin(gp, rev),
+                "ebit_margin":         r.ebit_margin(eb, rev),
+                "net_profit_margin":   npm,
+                "return_on_equity":    r.return_on_equity(ni, eq),
+                "return_on_assets":    r.return_on_assets(ni, ta),
+                "roce":                r.roce(eb, eq, total_liab),
+            },
+            "efficiency": {
+                "asset_turnover":         at,
+                "inventory_turnover":     r.inventory_turnover(cogs, inv),
+                "receivables_turnover":   r.receivables_turnover(rev, ar),
+                "fixed_asset_turnover":   r.fixed_asset_turnover(rev, fixed_assets),
+                "days_sales_outstanding": r.days_sales_outstanding(ar, rev),
+            },
+            "dupont": {
+                "net_profit_margin": npm,
+                "asset_turnover":    at,
+                "equity_multiplier": round(em, 2) if em is not None else None,
+                "roe":               r.dupont_roe(npm, at, em) if em is not None else None,
+            },
         }
 
-    print(json.dumps(result, indent=2))
+        if current_price is not None and shares_outstanding is not None:
+            eps_val = r.eps(ni, shares_outstanding)
+            result["valuation_multiples"] = {
+                "eps":      eps_val,
+                "pe_ratio": r.pe_ratio(current_price, eps_val),
+            }
+
+        print(json.dumps(result, indent=2))
+
+    except Exception as exc:
+        print(json.dumps({"error": f"Ratio analysis failed: {exc}"}))
 
 
 if __name__ == "__main__":

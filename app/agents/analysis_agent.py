@@ -1,29 +1,17 @@
-"""Analysis agent — runs ratio analysis and free cash flow calculations."""
-import json
+"""Analysis agent — runs ratio analysis and free cash flow calculations.
+
+The tool functions are thin wrappers that invoke the Agent Skill scripts under
+app/skills/ as subprocesses; all deterministic math lives in those scripts.
+"""
 import os
 
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
 
-from app.calculators.cashflows import CashFlowCalculator
-from app.calculators.ratios import RatioCalculator
+from app.skills.runner import run_skill
 
-_CRORE = 10_000_000
-
-
-def _c(value):
-    """Convert raw INR to crore. Returns None if value is None."""
-    return value / _CRORE if value is not None else None
-
-
-def _best_estimate(v1: float, v2: float, v3: float) -> tuple[float, float]:
-    """Return (best_estimate, spread). Best estimate is the average of the two
-    methods closest to each other — robust when one method (often CFO-based on
-    live data) diverges. Spread is max - min across all three."""
-    pairs = [(abs(v1 - v2), v1, v2), (abs(v1 - v3), v1, v3), (abs(v2 - v3), v2, v3)]
-    _, a, b = min(pairs, key=lambda x: x[0])
-    spread = round(max(v1, v2, v3) - min(v1, v2, v3), 2)
-    return round((a + b) / 2, 2), spread
+_RATIO_SKILL = "app/skills/ratio-analysis/scripts/calculate_ratios.py"
+_CASHFLOW_SKILL = "app/skills/cashflow-analysis/scripts/calculate_cashflows.py"
 
 
 def run_ratio_analysis(
@@ -43,7 +31,7 @@ def run_ratio_analysis(
     cfo: float,
     current_price: float,
     shares_outstanding: float,
-) -> dict:
+) -> str:
     """Calculate all financial ratios: liquidity, solvency, profitability,
     efficiency, and DuPont decomposition.
 
@@ -53,90 +41,24 @@ def run_ratio_analysis(
     Returns:
         JSON string with ratio results grouped by category.
     """
-    try:
-        ca  = _c(current_assets)
-        cl  = _c(current_liabilities)
-        ch  = _c(cash)
-        ar  = _c(accounts_receivable)
-        inv = _c(inventory)
-        ta  = _c(total_assets)
-        ltd = _c(total_non_current_liabilities)
-        eq  = _c(shareholders_equity)
-        rev = _c(total_revenue)
-        gp  = _c(gross_profit)
-        ni  = _c(net_income)
-        eb  = _c(ebit)
-        ie  = _c(interest_expense)
-
-        cogs         = rev - gp
-        fixed_assets = ta - ca
-        total_liab   = cl + ltd
-
-        r = RatioCalculator()
-
-        npm = r.net_profit_margin(ni, rev)
-        at  = r.asset_turnover(rev, ta)
-        em  = round(ta / eq, 6) if eq else None
-
-        result = {
-            "tool": "run_ratio_analysis",
-            # Absolute figures already converted to INR crore by _c() — the report
-            # agent must quote these (never the raw-INR values in financial_data).
-            "financials_crore": {
-                "total_revenue":        round(rev, 2),
-                "gross_profit":         round(gp, 2),
-                "net_income":           round(ni, 2),
-                "ebit":                 round(eb, 2),
-                "total_assets":         round(ta, 2),
-                "current_assets":       round(ca, 2),
-                "current_liabilities":  round(cl, 2),
-                "shareholders_equity":  round(eq, 2),
-                "cash":                 round(ch, 2),
-            },
-            "liquidity": {
-                "current_ratio": r.current_ratio(ca, cl),
-                "quick_ratio":   r.quick_ratio(ch, ar, cl),
-                "cash_ratio":    r.cash_ratio(ch, cl),
-            },
-            "solvency": {
-                "debt_to_equity":    r.debt_to_equity(cl, ltd, eq),
-                "interest_coverage": r.interest_coverage(eb, ie),
-                "debt_to_assets":    r.debt_to_assets(total_liab, ta),
-            },
-            "profitability": {
-                "gross_profit_margin": r.gross_profit_margin(gp, rev),
-                "ebit_margin":         r.ebit_margin(eb, rev),
-                "net_profit_margin":   npm,
-                "return_on_equity":    r.return_on_equity(ni, eq),
-                "return_on_assets":    r.return_on_assets(ni, ta),
-                "roce":                r.roce(eb, eq, total_liab),
-            },
-            "efficiency": {
-                "asset_turnover":         at,
-                "inventory_turnover":     r.inventory_turnover(cogs, inv),
-                "receivables_turnover":   r.receivables_turnover(rev, ar),
-                "fixed_asset_turnover":   r.fixed_asset_turnover(rev, fixed_assets),
-                "days_sales_outstanding": r.days_sales_outstanding(ar, rev),
-            },
-            "dupont": {
-                "net_profit_margin": npm,
-                "asset_turnover":    at,
-                "equity_multiplier": round(em, 2) if em is not None else None,
-                "roe":               r.dupont_roe(npm, at, em) if em is not None else None,
-            },
-        }
-
-        if current_price is not None and shares_outstanding is not None:
-            eps_val = r.eps(ni, shares_outstanding)
-            result["valuation_multiples"] = {
-                "eps":      eps_val,
-                "pe_ratio": r.pe_ratio(current_price, eps_val),
-            }
-
-        return json.dumps(result, indent=2)
-
-    except Exception as exc:
-        return json.dumps({"error": f"Ratio analysis failed: {exc}"})
+    return run_skill(_RATIO_SKILL, {
+        "total_assets": total_assets,
+        "current_assets": current_assets,
+        "inventory": inventory,
+        "cash": cash,
+        "accounts_receivable": accounts_receivable,
+        "current_liabilities": current_liabilities,
+        "total_non_current_liabilities": total_non_current_liabilities,
+        "shareholders_equity": shareholders_equity,
+        "total_revenue": total_revenue,
+        "gross_profit": gross_profit,
+        "net_income": net_income,
+        "ebit": ebit,
+        "interest_expense": interest_expense,
+        "cfo": cfo,
+        "current_price": current_price,
+        "shares_outstanding": shares_outstanding,
+    })
 
 
 def run_cashflow_analysis(
@@ -151,7 +73,7 @@ def run_cashflow_analysis(
     increase_in_current_assets: float,
     increase_in_current_liabilities: float,
     net_borrowing: float,
-) -> dict:
+) -> str:
     """Calculate validated FCFF and FCFE using 3 independent methods each.
 
     All monetary parameters are raw INR as returned by yfinance.
@@ -160,89 +82,19 @@ def run_cashflow_analysis(
         JSON string with validated FCFF, validated FCFE, all 3 method values,
         and cross_validation status.
     """
-    try:
-        ni      = _c(net_income)
-        nce     = _c(non_cash_expenses)
-        cfo_c   = _c(cfo)
-        capex_c = _c(capex)
-        eb      = _c(ebit)
-        ie      = _c(interest_expense)
-        te      = _c(tax_expense)
-        pi      = _c(pretax_income)
-        dca     = _c(increase_in_current_assets)
-        dcl     = _c(increase_in_current_liabilities)
-        nb      = _c(net_borrowing)
-
-        if pi == 0:
-            return json.dumps({"error": "pretax_income is zero — cannot compute tax rate"})
-        tax_rate = te / pi
-
-        calc = CashFlowCalculator()
-        nopat = calc.nopat(eb, tax_rate)
-        tolerance = 500.0
-
-        # --- FCFF: 3 independent methods, then a robust best estimate ---
-        # On live yfinance data the CFO-based method often diverges (different
-        # working-capital definitions), so rather than failing the whole pipeline
-        # we use the average of the two closest methods and surface a note.
-        fcff_m1 = round(calc.fcff_from_net_income(ni, nce, dca, dcl, ie, tax_rate, capex_c), 2)
-        fcff_m2 = round(calc.fcff_from_nopat(nopat, nce, dca, dcl, capex_c), 2)
-        fcff_m3 = round(calc.fcff_from_cfo(cfo_c, ie, tax_rate, capex_c), 2)
-        fcff_best, fcff_spread = _best_estimate(fcff_m1, fcff_m2, fcff_m3)
-
-        # --- FCFE: method 2 feeds off fcff_best to avoid propagating FCFF spread ---
-        fcfe_m1 = round(calc.fcfe_from_net_income(ni, nce, dca, dcl, capex_c, nb), 2)
-        fcfe_m2 = round(calc.fcfe_from_fcff(fcff_best, ie, tax_rate, nb), 2)
-        fcfe_m3 = round(calc.fcfe_from_ocf(cfo_c, capex_c, nb), 2)
-        fcfe_best, fcfe_spread = _best_estimate(fcfe_m1, fcfe_m2, fcfe_m3)
-
-        within_tol = fcff_spread <= tolerance and fcfe_spread <= tolerance
-        cross_validation = "passed" if within_tol else "approximate"
-
-        fcff_block = {
-            "method_1_net_income": fcff_m1,
-            "method_2_nopat":      fcff_m2,
-            "method_3_cfo":        fcff_m3,
-            "spread":              fcff_spread,
-            "validated_fcff":      fcff_best,
-        }
-        fcfe_block = {
-            "method_1_net_income": fcfe_m1,
-            "method_2_fcff":       fcfe_m2,
-            "method_3_ocf":        fcfe_m3,
-            "spread":              fcfe_spread,
-            "validated_fcfe":      fcfe_best,
-        }
-        if fcff_spread > tolerance:
-            fcff_block["data_quality_note"] = (
-                f"FCFF methods differ by {fcff_spread} crore (tolerance {tolerance}). "
-                f"validated_fcff is the average of the two closest methods."
-            )
-        if fcfe_spread > tolerance:
-            fcfe_block["data_quality_note"] = (
-                f"FCFE methods differ by {fcfe_spread} crore (tolerance {tolerance}). "
-                f"validated_fcfe is the average of the two closest methods."
-            )
-
-        return json.dumps({
-            "tool": "run_cashflow_analysis",
-            "inputs": {
-                "net_income":                      round(ni, 2),
-                "non_cash_expenses":               round(nce, 2),
-                "cfo":                             round(cfo_c, 2),
-                "capex":                           round(capex_c, 2),
-                "tax_rate":                        round(tax_rate, 6),
-                "increase_in_current_assets":      round(dca, 2),
-                "increase_in_current_liabilities": round(dcl, 2),
-                "net_borrowing":                   round(nb, 2),
-            },
-            "fcff": fcff_block,
-            "fcfe": fcfe_block,
-            "cross_validation": cross_validation,
-        }, indent=2)
-
-    except Exception as exc:
-        return json.dumps({"error": f"Cashflow analysis failed: {exc}"})
+    return run_skill(_CASHFLOW_SKILL, {
+        "net_income": net_income,
+        "non_cash_expenses": non_cash_expenses,
+        "cfo": cfo,
+        "capex": capex,
+        "ebit": ebit,
+        "interest_expense": interest_expense,
+        "tax_expense": tax_expense,
+        "pretax_income": pretax_income,
+        "increase_in_current_assets": increase_in_current_assets,
+        "increase_in_current_liabilities": increase_in_current_liabilities,
+        "net_borrowing": net_borrowing,
+    })
 
 
 def create_analysis_agent() -> LlmAgent:
