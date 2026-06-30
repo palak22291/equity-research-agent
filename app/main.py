@@ -81,8 +81,13 @@ async def run_pipeline(
     sector: str,
     beta: float | None = None,
     offline: bool = False,
-) -> str:
-    """Run the full equity research pipeline and return the final markdown report.
+) -> tuple[str, dict[str, str]]:
+    """Run the full equity research pipeline.
+
+    Returns (final_markdown_report, agent_outputs) where agent_outputs maps
+    agent name → its final text (JSON for data/analysis/valuation agents,
+    markdown for report_agent). Callers that only need the report can ignore
+    the second element.
 
     When offline=True the data step is served from the cached Cipla fixture instead of
     yfinance (no network) — for demo safety. The analysis/valuation/report agents still
@@ -119,6 +124,7 @@ async def run_pipeline(
     # (session returned by create_session is a snapshot; state_delta in events
     # is the authoritative source of what each agent wrote to state.)
     accumulated_state: dict = {}
+    agent_outputs: dict[str, str] = {}  # agent name → final text
     current_author: str | None = None
     final_report = ""
 
@@ -168,6 +174,7 @@ async def run_pipeline(
                     for part in event.content.parts:
                         if hasattr(part, "text") and part.text:
                             print(f"[{author}]   final text ({len(part.text)} chars): {_preview(part.text)}")
+                            agent_outputs[author] = part.text
                             if author == "report_agent":
                                 final_report = part.text
 
@@ -198,7 +205,7 @@ async def run_pipeline(
     # Deterministically annotate the sensitivity grid (never left to the LLM).
     final_report = _inject_sensitivity_caveat(final_report)
 
-    return final_report
+    return final_report, agent_outputs
 
 
 def main():
@@ -241,7 +248,7 @@ def main():
     if beta is not None:
         print(f"[pipeline] Using user-provided beta: {beta}")
 
-    report = asyncio.run(run_pipeline(ticker, sector, beta, offline=offline))
+    report, _ = asyncio.run(run_pipeline(ticker, sector, beta, offline=offline))
 
     if report:
         print(f"\n{'=' * 60}")
