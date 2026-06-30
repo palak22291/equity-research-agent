@@ -4,6 +4,9 @@ import os
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
 
+from app.agents.tpm_pacer import cooldown_before_agent, mark_llm_activity
+
+
 def create_report_agent() -> LlmAgent:
     return LlmAgent(
         name="report_agent",
@@ -95,6 +98,9 @@ calculations were performed by deterministic Python calculators — not by the L
         tools=[],
         output_key="final_report",
         include_contents="none",
+        # Wait out the TPM window before the first call; timestamp each call after it.
+        before_agent_callback=cooldown_before_agent,
+        after_model_callback=mark_llm_activity,
     )
 
 

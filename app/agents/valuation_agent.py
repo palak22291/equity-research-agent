@@ -15,6 +15,7 @@ import os
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
 
+from app.agents.tpm_pacer import cooldown_before_agent, mark_llm_activity
 from app.skills.runner import run_skill
 
 _COST_OF_CAPITAL_SKILL = "app/skills/cost-of-capital/scripts/calculate_cost_of_capital.py"
@@ -160,6 +161,9 @@ Output that JSON object verbatim — no markdown, no explanation text.""",
         tools=[run_valuation],
         output_key="temp:valuation_results",
         include_contents="none",
+        # Wait out the TPM window before the first call; timestamp each call after it.
+        before_agent_callback=cooldown_before_agent,
+        after_model_callback=mark_llm_activity,
     )
 
 

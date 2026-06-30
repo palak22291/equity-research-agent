@@ -8,6 +8,7 @@ import os
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
 
+from app.agents.tpm_pacer import cooldown_before_agent, mark_llm_activity
 from app.skills.runner import run_skill
 
 _RATIO_SKILL = "app/skills/ratio-analysis/scripts/calculate_ratios.py"
@@ -134,6 +135,9 @@ no explanation text.""",
         tools=[run_ratio_analysis, run_cashflow_analysis],
         output_key="temp:analysis_results",
         include_contents="none",
+        # Wait out the TPM window before the first call; timestamp each call after it.
+        before_agent_callback=cooldown_before_agent,
+        after_model_callback=mark_llm_activity,
     )
 
 

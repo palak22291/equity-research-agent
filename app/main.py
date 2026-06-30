@@ -135,12 +135,10 @@ async def run_pipeline(
                 if current_author is not None:
                     print(f"\n[{current_author}] finished")
                     print(f"[state] keys so far: {sorted(accumulated_state.keys()) or '(none)'}")
-                    # The offline data step makes no LLM calls, so no TPM cooldown is needed.
-                    if offline and current_author == "data_agent":
-                        print("[pipeline] (offline data step — skipping TPM cooldown)")
-                    else:
-                        print("[pipeline] Waiting 60s for TPM limit to reset...")
-                        await asyncio.sleep(60)
+                    # TPM cooldowns are handled by each agent's before_agent_callback
+                    # (app/agents/tpm_pacer.py), which fires BEFORE the agent's first
+                    # LLM call. A sleep here would be too late — ADK only emits an
+                    # agent's first event after that call has already been sent.
                 current_author = author
                 print(f"\n{_SEP}")
                 print(f"[{author}] started")
