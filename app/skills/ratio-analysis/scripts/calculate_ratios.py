@@ -32,6 +32,20 @@ def _c(value):
     return value / _CRORE if value is not None else None
 
 
+def _safe(fn, *args):
+    """Compute a ratio, returning None (N/A) instead of aborting the whole report
+    when an input is legitimately zero or missing. Some ratios don't apply to every
+    business — e.g. an IT/services firm carries no inventory (inventory_turnover) and
+    a debt-free firm has no interest expense (interest_coverage). Those should show as
+    N/A, not raise and trigger the agent to retry (which both wastes the TPM budget and
+    tempts the LLM to fudge a non-zero input). Core ratios are not wrapped: their
+    divisors must always be present, so a failure there is a real data error."""
+    try:
+        return fn(*args)
+    except (ValueError, TypeError, ZeroDivisionError):
+        return None
+
+
 def main():
     data = json.load(sys.stdin)
 
@@ -85,7 +99,8 @@ def main():
             },
             "solvency": {
                 "debt_to_equity":    r.debt_to_equity(cl, ltd, eq),
-                "interest_coverage": r.interest_coverage(eb, ie),
+                # N/A for a debt-free firm with no interest expense.
+                "interest_coverage": _safe(r.interest_coverage, eb, ie),
                 "debt_to_assets":    r.debt_to_assets(total_liab, ta),
             },
             "profitability": {
@@ -98,10 +113,11 @@ def main():
             },
             "efficiency": {
                 "asset_turnover":         at,
-                "inventory_turnover":     r.inventory_turnover(cogs, inv),
-                "receivables_turnover":   r.receivables_turnover(rev, ar),
-                "fixed_asset_turnover":   r.fixed_asset_turnover(rev, fixed_assets),
-                "days_sales_outstanding": r.days_sales_outstanding(ar, rev),
+                # N/A for a services firm carrying no inventory.
+                "inventory_turnover":     _safe(r.inventory_turnover, cogs, inv),
+                "receivables_turnover":   _safe(r.receivables_turnover, rev, ar),
+                "fixed_asset_turnover":   _safe(r.fixed_asset_turnover, rev, fixed_assets),
+                "days_sales_outstanding": _safe(r.days_sales_outstanding, ar, rev),
             },
             "dupont": {
                 "net_profit_margin": npm,
