@@ -9,10 +9,10 @@
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
 
 /* Header */
-.header { background: #1a1d27; border-bottom: 1px solid #2d3148; padding: 0 2rem; height: 64px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+.header { background: #1a1d27; border-bottom: 1px solid #2d3148; padding: 0 2rem; height: 74px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
 .logo { display: flex; flex-direction: column; }
-.logo-title { font-size: 16px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.3px; }
-.logo-sub { font-size: 11px; color: #64748b; margin-top: 1px; }
+.logo-title { font-size: 20px; font-weight: 700; color: #f1f3f9; letter-spacing: -0.3px; }
+.logo-sub { font-size: 13px; color: #64748b; margin-top: 1px; }
 .form-row { display: flex; gap: 10px; align-items: center; }
 .form-row input, .form-row select { height: 38px; border: 1px solid #2d3148; border-radius: 8px; padding: 0 12px; font-size: 13px; background: #252836; color: #e2e8f0; outline: none; transition: border-color 0.15s; }
 .form-row input:focus, .form-row select:focus { border-color: #4f6ef7; box-shadow: 0 0 0 3px rgba(79,110,247,0.15); }
@@ -159,10 +159,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; b
 
 <div class="main">
   <div class="empty" id="emptyState">
-    <div class="empty-icon">📊</div>
+    <!-- <div class="empty-icon">📊</div> -->
     <h2>Enter a ticker to get started</h2>
     <p>Supports NSE-listed equities. Live analysis takes 3–4 minutes using a 4-agent ADK pipeline with deterministic Python calculators.</p>
-    <div class="empty-hint">💡 Check "Offline demo" for an instant Cipla report without API calls</div>
+    <div class="empty-hint"> Check "Offline demo" for an instant Cipla report without API calls</div>
   </div>
 
   <div class="loading hidden" id="loadingState">
