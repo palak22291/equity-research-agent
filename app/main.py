@@ -11,9 +11,12 @@ Usage:
     python3 -m app.main CIPLA pharmaceuticals 0.4468
     python3 -m app.main INFY it
     python3 -m app.main                          # prompts for ticker and sector
+    python3 -m app.main --offline                # demo mode: cached Cipla fixture, no yfinance
+    python3 -m app.main CIPLA pharmaceuticals 0.4468 --offline
 
 Requires:
     GROQ_API_KEY environment variable
+    For --offline: tests/fixtures/cipla_fy2026.json (run scripts/save_fixture.py once)
 """
 import asyncio
 import os
@@ -32,7 +35,7 @@ os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "FALSE")
 from google.adk.runners import InMemoryRunner
 from google.genai import types
 
-from app.agents.orchestrator import equity_research_orchestrator
+from app.agents.orchestrator import build_orchestrator
 from app.security.guardrails import validate_beta, validate_sector, validate_ticker
 
 _SEP = "-" * 60
@@ -73,10 +76,21 @@ def _inject_sensitivity_caveat(report: str) -> str:
     return report.rstrip() + "\n" + block
 
 
-async def run_pipeline(ticker: str, sector: str, beta: float | None = None) -> str:
-    """Run the full equity research pipeline and return the final markdown report."""
+async def run_pipeline(
+    ticker: str,
+    sector: str,
+    beta: float | None = None,
+    offline: bool = False,
+) -> str:
+    """Run the full equity research pipeline and return the final markdown report.
+
+    When offline=True the data step is served from the cached Cipla fixture instead of
+    yfinance (no network) — for demo safety. The analysis/valuation/report agents still
+    use Groq.
+    """
+    orchestrator = build_orchestrator(offline=offline, beta_override=beta or 0.0)
     runner = InMemoryRunner(
-        agent=equity_research_orchestrator,
+        agent=orchestrator,
         app_name="equity_research_agent",
     )
 
@@ -96,6 +110,8 @@ async def run_pipeline(ticker: str, sector: str, beta: float | None = None) -> s
 
     print(f"\n{_SEP}")
     print(f"[pipeline] Starting: {ticker} / {sector}")
+    if offline:
+        print("[pipeline] OFFLINE MODE — using cached Cipla fixture data")
     print(f"[pipeline] Session: {session.id}")
     print(_SEP)
 
@@ -119,8 +135,12 @@ async def run_pipeline(ticker: str, sector: str, beta: float | None = None) -> s
                 if current_author is not None:
                     print(f"\n[{current_author}] finished")
                     print(f"[state] keys so far: {sorted(accumulated_state.keys()) or '(none)'}")
-                    print("[pipeline] Waiting 60s for TPM limit to reset...")
-                    await asyncio.sleep(60)
+                    # The offline data step makes no LLM calls, so no TPM cooldown is needed.
+                    if offline and current_author == "data_agent":
+                        print("[pipeline] (offline data step — skipping TPM cooldown)")
+                    else:
+                        print("[pipeline] Waiting 60s for TPM limit to reset...")
+                        await asyncio.sleep(60)
                 current_author = author
                 print(f"\n{_SEP}")
                 print(f"[{author}] started")
@@ -184,19 +204,26 @@ async def run_pipeline(ticker: str, sector: str, beta: float | None = None) -> s
 
 
 def main():
+    # --offline can appear anywhere; strip it out before positional parsing.
+    offline = "--offline" in sys.argv
+    argv = [a for a in sys.argv if a != "--offline"]
+
     beta: float | None = None
-    if len(sys.argv) >= 3:
-        ticker = sys.argv[1].upper()
-        sector = sys.argv[2].lower()
-        if len(sys.argv) >= 4:
+    if len(argv) >= 3:
+        ticker = argv[1].upper()
+        sector = argv[2].lower()
+        if len(argv) >= 4:
             try:
-                beta = float(sys.argv[3])
+                beta = float(argv[3])
             except ValueError:
-                print(f"Error: beta must be a number, got '{sys.argv[3]}'")
+                print(f"Error: beta must be a number, got '{argv[3]}'")
                 sys.exit(1)
-    elif len(sys.argv) == 2:
-        ticker = sys.argv[1].upper()
+    elif len(argv) == 2:
+        ticker = argv[1].upper()
         sector = input(f"Enter sector for {ticker} (e.g. pharmaceuticals, it, banking): ").strip().lower()
+    elif offline:
+        # Offline demo with no positional args: default to the cached Cipla fixture.
+        ticker, sector = "CIPLA", "pharmaceuticals"
     else:
         ticker = input("Enter stock ticker (e.g. CIPLA, INFY): ").strip().upper()
         sector = input("Enter sector (e.g. pharmaceuticals, it, banking): ").strip().lower()
@@ -216,7 +243,7 @@ def main():
     if beta is not None:
         print(f"[pipeline] Using user-provided beta: {beta}")
 
-    report = asyncio.run(run_pipeline(ticker, sector, beta))
+    report = asyncio.run(run_pipeline(ticker, sector, beta, offline=offline))
 
     if report:
         print(f"\n{'=' * 60}")
