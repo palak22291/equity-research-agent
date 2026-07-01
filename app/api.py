@@ -94,11 +94,49 @@ async def analyze(req: AnalyzeRequest):
     analysis    = _parse(agent_outputs.get("analysis_agent"))
     valuation   = _parse(agent_outputs.get("valuation_agent"))
 
-    ratios      = analysis.get("ratio_analysis", {})
-    cashflows   = analysis.get("cashflow_analysis", {})
+    ratio_analysis    = analysis.get("ratio_analysis", {})
+    cashflow_analysis = analysis.get("cashflow_analysis", {})
     coc         = valuation.get("cost_of_capital", {})
     dcf         = valuation.get("dcf_valuation", {})
     equity_val  = dcf.get("equity_valuation", {})
+    fcff        = cashflow_analysis.get("fcff", {})
+    fcfe        = cashflow_analysis.get("fcfe", {})
+    capm        = coc.get("capm_breakdown", {})
+    weights     = coc.get("weights", {})
+
+    # The calculators nest their outputs (liquidity/solvency/profitability/...,
+    # fcff/fcfe, capm_breakdown/weights) — that schema is validated by tests and
+    # consumed by report_agent, so it stays as-is. The frontend dashboard just
+    # wants a flat subset of it, so we flatten here at the HTTP boundary.
+    liquidity     = ratio_analysis.get("liquidity", {})
+    solvency      = ratio_analysis.get("solvency", {})
+    profitability = ratio_analysis.get("profitability", {})
+    efficiency    = ratio_analysis.get("efficiency", {})
+    ratios = {
+        "current_ratio":       liquidity.get("current_ratio"),
+        "quick_ratio":         liquidity.get("quick_ratio"),
+        "interest_coverage":   solvency.get("interest_coverage"),
+        "debt_to_equity":      solvency.get("debt_to_equity"),
+        "gross_profit_margin": profitability.get("gross_profit_margin"),
+        "net_profit_margin":   profitability.get("net_profit_margin"),
+        "return_on_equity":    profitability.get("return_on_equity"),
+        "asset_turnover":      efficiency.get("asset_turnover"),
+    }
+    cashflows = {
+        "fcff_m1":        fcff.get("method_1_net_income"),
+        "fcff_m2":        fcff.get("method_2_nopat"),
+        "fcff_m3":        fcff.get("method_3_cfo"),
+        "validated_fcff": fcff.get("validated_fcff"),
+        "validated_fcfe": fcfe.get("validated_fcfe"),
+    }
+    cost_of_capital = {
+        **coc,
+        "risk_free_rate": capm.get("risk_free_rate"),
+        "beta":           capm.get("beta"),
+        "market_return":  capm.get("market_return"),
+        "wd":             weights.get("wd"),
+        "we":             weights.get("we"),
+    }
 
     return {
         # Company metadata (for the dashboard header)
@@ -107,15 +145,18 @@ async def analyze(req: AnalyzeRequest):
         "fiscal_year_end": financial.get("fiscal_year_end"),
         "sector":          financial.get("sector", sector),
         # Top-level summary fields (duplicated for easy JS access)
-        "intrinsic_price": equity_val.get("intrinsic_share_price"),
-        "market_price":    equity_val.get("current_market_price"),
-        "verdict":         equity_val.get("verdict"),
-        "wacc":            coc.get("wacc"),
-        "ke":              coc.get("ke"),
+        "intrinsic_share_price":  equity_val.get("intrinsic_share_price"),
+        "market_price":           equity_val.get("current_market_price"),
+        "verdict":                equity_val.get("verdict"),
+        "wacc":                   coc.get("wacc"),
+        "ke":                     coc.get("ke"),
+        "beta":                   beta,
+        "terminal_growth_rate":   dcf.get("inputs", {}).get("terminal_growth_rate"),
+        "sensitivity":            dcf.get("sensitivity_analysis", {}),
         # Structured blocks for the dashboard cards
         "ratios":          ratios,
         "cashflows":       cashflows,
-        "cost_of_capital": coc,
+        "cost_of_capital": cost_of_capital,
         "dcf":             dcf,
         # Full markdown report for the expandable section
         "report":          report,
