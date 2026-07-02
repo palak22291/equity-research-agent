@@ -1,9 +1,9 @@
 """Shared tokens-per-minute (TPM) pacer for the Groq-backed agents.
 
-Groq's free tier enforces a rolling 60-second tokens-per-minute limit (12k TPM for
-llama-3.3-70b-versatile). Each agent's own burst fits under that limit, but two
-agents' bursts back-to-back do not — so a full window must separate the *last* LLM
-call of one agent from the *first* LLM call of the next.
+Groq's free tier enforces a rolling 60-second tokens-per-minute limit (varies by
+model). Each agent's own burst fits under that limit, but two agents' bursts
+back-to-back do not — so a full window must separate the *last* LLM call of one
+agent from the *first* LLM call of the next.
 
 The cooldown must happen BEFORE an agent's first LLM call. ADK only emits an
 agent's first event *after* that call returns, so a reactive sleep in the runner

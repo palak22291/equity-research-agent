@@ -1,7 +1,7 @@
 """FastAPI backend for the equity research agent web dashboard.
 
 Run with:
-    uvicorn app.api:app --reload --port 8000
+    python3 -m uvicorn app.api:app --reload --port 8000
 
 Then open http://localhost:8000 in your browser.
 
