@@ -208,6 +208,13 @@ python3 -m uvicorn app.api:app --port 8000
 # Open http://localhost:8000
 ```
 
+## Live Demo
+
+**[Try it live →](https://equity-research-agent-jqbe.onrender.com)**
+
+> Note: First load may take 30 seconds (free tier cold start). Use "Offline demo" checkbox for instant Cipla analysis without API calls.
+> To run with live data for any NSE stock, clone the repo and add your own free [Groq API key](https://console.groq.com/keys) to `.env`.
+
 ### Supported Sectors
 `pharmaceuticals` · `it` · `banking` · `fmcg` · `automobiles` · `oil_gas` · `telecom` · `metals` · `cement` · `power` · `healthcare`
 
