@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+google-adk
+litellm
+yfinance
+fastmcp
+python-dotenv
+pydantic
+httpx
+tenacity
+pandas
