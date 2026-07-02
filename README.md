@@ -24,6 +24,7 @@ Give the agent a stock ticker and sector. It produces a complete equity research
 - **DCF valuation** — 3-year forecast with Gordon Growth terminal value, intrinsic share price
 - **Sensitivity analysis** — 2D grid of intrinsic price across cost of equity × terminal growth rate scenarios
 - **Investment verdict** — Undervalued / Fairly Valued / Overvalued vs current market price
+- **Web Dashboard** — dark theme UI with live analysis, verdict strip, ratio cards, FCF visualization, and sensitivity analysis table
 
 ```bash
 python3 -m app.main CIPLA pharmaceuticals
@@ -55,7 +56,7 @@ User Input (ticker + sector)
 | `data_agent` | Fetch live financial data | yfinance MCP server |
 | `analysis_agent` | Ratio + cashflow analysis | Agent Skills (deterministic Python) |
 | `valuation_agent` | Cost of capital + DCF | Agent Skills (deterministic Python) |
-| `report_agent` | Synthesize results into markdown report |LLM narrative only (no calculations) |
+| `report_agent` | Synthesize results into markdown report | LLM narrative only (no calculations) |
 
 ---
 
@@ -73,7 +74,7 @@ This was a deliberate architectural choice: LLMs produce plausible-sounding but 
 
 The calculation engine was built and tested against a **professor-graded (full marks) equity research project** for Cipla Ltd. FY2025.
 
-**100 unit tests** verify calculators reproduce known-correct outputs:
+**127 unit tests** verify calculators reproduce known-correct outputs:
 
 | Calculator | Tests | Verified Against |
 |---|---|---|
@@ -81,6 +82,7 @@ The calculation engine was built and tested against a **professor-graded (full m
 | `cashflows.py` | 30 | Cipla FY2025 Excel |
 | `cost_of_capital.py` | 36 | Cipla FY2025 Excel |
 | `dcf.py` | 13 | Cipla FY2025 Excel |
+| `security/guardrails.py` | 27 | Input validation + injection tests |
 
 Key verified outputs for Cipla FY2025:
 - WACC: **8.40%**
@@ -97,9 +99,9 @@ This project applies concepts from all 5 days of the Kaggle × Google AI Agents 
 | Concept | Where Demonstrated |
 |---|---|
 | Multi-agent system (ADK) | 4-agent sequential pipeline in `app/agents/` |
-| MCP Server | yfinance data provider in `app/mcp/` |
-| Agent Skills | 4 skills with SKILL.md + Python scripts in `app/skills/` |
-| Security / No-LLM-math guardrail | All calculations in `app/calculators/` — never in LLM text |
+| MCP Server | yfinance data provider in `app/mcp/` — genuinely wired into execution path |
+| Agent Skills | 4 skills with SKILL.md + Python scripts in `app/skills/` — invoked as subprocesses |
+| Security guardrails | Input validation in `app/security/guardrails.py` — ticker, sector, beta, numeric output |
 | Spec-first development (Day 4) | `specs/equity_research_agent.md` — written before any code |
 | Context engineering | `CLAUDE.md` with hard constraints on calculation delegation |
 
@@ -111,7 +113,9 @@ This project applies concepts from all 5 days of the Kaggle × Google AI Agents 
 - **LLM:** Groq (llama-3.3-70b-versatile) via LiteLLM
 - **Data Source:** yfinance (Yahoo Finance) via custom MCP server
 - **Finance Calculations:** Pure Python (no external finance libraries — formulas implemented from scratch)
-- **Testing:** pytest (100 unit tests)
+- **Backend:** FastAPI + uvicorn
+- **Frontend:** Single-file dark theme dashboard (HTML/CSS/JS)
+- **Testing:** pytest (127 unit tests)
 - **Skills:** FastMCP + custom SKILL.md agent skills
 
 ---
@@ -143,8 +147,15 @@ equity-research-agent/
 │   │   ├── valuation_agent.py
 │   │   ├── report_agent.py
 │   │   └── orchestrator.py
-│   └── main.py                     # Entry point
-├── tests/                          # 100 unit tests
+│   ├── security/
+│   │   └── guardrails.py           # Input validation
+│   ├── api.py                      # FastAPI backend
+│   └── main.py                     # CLI entry point
+├── frontend/
+│   └── index.html                  # Dark theme web dashboard
+├── tests/                          # 127 unit tests
+├── scripts/
+│   └── save_fixture.py             # Generate offline demo fixture
 ├── CLAUDE.md                       # Context engineering for Claude Code
 └── .env                            # API keys (not committed)
 ```
@@ -172,7 +183,7 @@ Create a `.env` file in the project root:
 GROQ_API_KEY=your_groq_api_key_here
 ```
 
-### Run
+### Run CLI
 
 ```bash
 # Analyze any NSE-listed company
@@ -180,12 +191,36 @@ python3 -m app.main CIPLA pharmaceuticals
 python3 -m app.main INFY it
 python3 -m app.main RELIANCE oil_gas
 
+# With verified beta override
+python3 -m app.main CIPLA pharmaceuticals 0.4468
+
+# Offline demo mode (no internet required for data fetch)
+python3 -m app.main --offline
+
 # Run unit tests
 python3 -m pytest tests/ -v
 ```
 
+### Run Web Dashboard
+
+```bash
+python3 -m uvicorn app.api:app --port 8000
+# Open http://localhost:8000
+```
+
 ### Supported Sectors
 `pharmaceuticals` · `it` · `banking` · `fmcg` · `automobiles` · `oil_gas` · `telecom` · `metals` · `cement` · `power` · `healthcare`
+
+### Common NSE Tickers
+| Company | Ticker |
+|---|---|
+| Cipla | CIPLA |
+| Infosys | INFY |
+| Reliance Industries | RELIANCE |
+| HDFC Bank | HDFCBANK |
+| TCS | TCS |
+| Sun Pharma | SUNPHARMA |
+| Wipro | WIPRO |
 
 ---
 
@@ -196,14 +231,14 @@ python3 -m pytest tests/ -v
 Ticker: CIPLA.NS | Sector: Pharmaceuticals
 
 ### Key Financial Ratios
-| Ratio          | Value |
-| Current Ratio  | 3.44  |
+| Ratio             | Value  |
+| Current Ratio     | 3.44   |
 | Interest Coverage | 109.31 |
-| Net Profit Margin | 14%  |
+| Net Profit Margin | 14%    |
 
 ### DCF Valuation
-| Intrinsic Share Price | ₹4,934 |
-| Current Market Price  | ₹1,441 |
+| Intrinsic Share Price | ₹3,462 |
+| Current Market Price  | ₹1,454 |
 | Verdict               | UNDERVALUED ✓ |
 
 *All calculations performed by deterministic Python tools — not LLM reasoning.*
@@ -213,7 +248,7 @@ Ticker: CIPLA.NS | Sector: Pharmaceuticals
 
 ## About
 
-Built by **Palak Gupta** — 2nd year BTech (CS + AI) student at Newton School Of Technology , with a Finance minor.
+Built by **Palak Gupta** — 2nd year BTech (CS + AI) student at Rishihood University, with a Finance minor.
 
 This project sits at the intersection of my two academic interests: building AI systems and understanding financial valuation. The calculation engine is directly derived from academic coursework; the agent architecture was built during the Kaggle × Google AI Agents Intensive.
 
