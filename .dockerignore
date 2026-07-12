@@ -4,5 +4,6 @@ __pycache__
 *.pyc
 *.pyo
 .pytest_cache
+# Safe to exclude: the offline fixture lives in app/data/, not tests/
 tests/
 .venv

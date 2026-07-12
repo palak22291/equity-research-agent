@@ -16,7 +16,7 @@ Usage:
 
 Requires:
     GROQ_API_KEY environment variable
-    For --offline: tests/fixtures/cipla_fy2026.json (run scripts/save_fixture.py once)
+    For --offline: app/data/cipla_fy2026.json (run scripts/save_fixture.py once)
 """
 import asyncio
 import os
@@ -39,6 +39,10 @@ from app.agents.orchestrator import build_orchestrator
 from app.security.guardrails import validate_beta, validate_sector, validate_ticker
 
 _SEP = "-" * 60
+
+# The offline fixture (app/data/cipla_fy2026.json) holds Cipla data only; serving it
+# for any other ticker would silently label one company's numbers with another's name.
+_OFFLINE_FIXTURE_TICKERS = {"CIPLA", "CIPLA.NS"}
 
 
 def _preview(text: str, limit: int = 300) -> str:
@@ -91,8 +95,15 @@ async def run_pipeline(
 
     When offline=True the data step is served from the cached Cipla fixture instead of
     yfinance (no network) — for demo safety. The analysis/valuation/report agents still
-    use Groq.
+    use Groq. Offline mode only supports the Cipla fixture; other tickers are rejected
+    with a ValueError before any agent runs.
     """
+    if offline and ticker.upper() not in _OFFLINE_FIXTURE_TICKERS:
+        raise ValueError(
+            f"offline mode only supports the CIPLA fixture (got ticker '{ticker}'). "
+            "Run without offline mode to analyze other companies."
+        )
+
     orchestrator = build_orchestrator(offline=offline, beta_override=beta or 0.0)
     runner = InMemoryRunner(
         agent=orchestrator,
@@ -248,7 +259,11 @@ def main():
     if beta is not None:
         print(f"[pipeline] Using user-provided beta: {beta}")
 
-    report, _ = asyncio.run(run_pipeline(ticker, sector, beta, offline=offline))
+    try:
+        report, _ = asyncio.run(run_pipeline(ticker, sector, beta, offline=offline))
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
 
     if report:
         print(f"\n{'=' * 60}")

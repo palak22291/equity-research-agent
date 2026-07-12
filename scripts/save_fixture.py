@@ -2,7 +2,7 @@
 """Save a Cipla financial-data fixture for offline/demo mode.
 
 Fetches the full financial-data payload via the MCP server's aggregating tool and
-writes it to tests/fixtures/cipla_fy2026.json. Run this once (with network) so the
+writes it to app/data/cipla_fy2026.json. Run this once (with network) so the
 pipeline can later run with --offline (no yfinance, no network) for demo safety.
 
 Usage:
@@ -18,7 +18,7 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 
 from app.mcp.financial_data_server import fetch_all_financial_data
 
-_FIXTURE = _PROJECT_ROOT / "tests" / "fixtures" / "cipla_fy2026.json"
+_FIXTURE = _PROJECT_ROOT / "app" / "data" / "cipla_fy2026.json"
 
 
 def main():

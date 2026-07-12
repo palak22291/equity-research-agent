@@ -11,6 +11,7 @@ Requires:
 """
 from __future__ import annotations
 import json
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -47,16 +48,48 @@ async def root():
     return HTMLResponse(_FRONTEND.read_text())
 
 
-def _parse(raw) -> dict:
-    """Parse a JSON string or return the dict as-is; empty dict on failure."""
-    if not raw:
-        return {}
+# LLM agents occasionally wrap their JSON output in a markdown code fence.
+_FENCE_RE = re.compile(r"^```[a-zA-Z]*\s*\n(.*?)\n?```$", re.DOTALL)
+
+
+def _parse_stage(raw, stage: str) -> dict:
+    """Parse one pipeline stage's JSON output, or fail loudly with a 502.
+
+    A stage that produced nothing, non-JSON, or an {"error": ...} payload means
+    the pipeline result is unusable — surfacing that as a gateway error beats the
+    old behaviour of returning 200 OK with an all-null dashboard.
+    """
     if isinstance(raw, dict):
-        return raw
-    try:
-        return json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return {}
+        parsed = raw
+    else:
+        text = str(raw).strip() if raw else ""
+        if not text:
+            raise HTTPException(
+                status_code=502,
+                detail=f"pipeline stage '{stage}' produced no output",
+            )
+        fenced = _FENCE_RE.match(text)
+        if fenced:
+            text = fenced.group(1).strip()
+        try:
+            parsed = json.loads(text)
+        except (json.JSONDecodeError, TypeError):
+            raise HTTPException(
+                status_code=502,
+                detail=f"pipeline stage '{stage}' returned unparseable output: "
+                       f"{text[:200]}",
+            )
+    if not isinstance(parsed, dict):
+        raise HTTPException(
+            status_code=502,
+            detail=f"pipeline stage '{stage}' returned {type(parsed).__name__}, expected object",
+        )
+    if "error" in parsed:
+        raise HTTPException(
+            status_code=502,
+            detail=f"pipeline stage '{stage}' failed: {parsed['error']}",
+        )
+    return parsed
 
 
 @app.post("/analyze")
@@ -73,6 +106,9 @@ async def analyze(req: AnalyzeRequest):
         report, agent_outputs = await run_pipeline(
             ticker, sector, beta, offline=req.offline
         )
+    except ValueError as exc:
+        # e.g. offline mode requested for a ticker the fixture doesn't cover.
+        raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         # Surface a clean message — the full traceback goes to server stdout.
         msg = str(exc)
@@ -90,9 +126,9 @@ async def analyze(req: AnalyzeRequest):
     # analysis_agent  → {"ratio_analysis": {...}, "cashflow_analysis": {...}}
     # valuation_agent → {"cost_of_capital": {...}, "dcf_valuation": {...}}
     # report_agent    → markdown string (already in `report`)
-    financial   = _parse(agent_outputs.get("data_agent"))
-    analysis    = _parse(agent_outputs.get("analysis_agent"))
-    valuation   = _parse(agent_outputs.get("valuation_agent"))
+    financial   = _parse_stage(agent_outputs.get("data_agent"), "data_agent")
+    analysis    = _parse_stage(agent_outputs.get("analysis_agent"), "analysis_agent")
+    valuation   = _parse_stage(agent_outputs.get("valuation_agent"), "valuation_agent")
 
     ratio_analysis    = analysis.get("ratio_analysis", {})
     cashflow_analysis = analysis.get("cashflow_analysis", {})

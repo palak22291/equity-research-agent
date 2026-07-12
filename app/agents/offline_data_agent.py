@@ -13,7 +13,7 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event, EventActions
 from google.genai import types
 
-_FIXTURE_PATH = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "cipla_fy2026.json"
+_FIXTURE_PATH = Path(__file__).resolve().parents[1] / "data" / "cipla_fy2026.json"
 
 
 class OfflineDataAgent(BaseAgent):

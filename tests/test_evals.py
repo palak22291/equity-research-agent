@@ -26,7 +26,7 @@ from app.agents.analysis_agent import run_cashflow_analysis, run_ratio_analysis
 from app.agents.offline_data_agent import create_offline_data_agent
 from app.agents.valuation_agent import run_valuation
 
-_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "cipla_fy2026.json"
+_FIXTURE = Path(__file__).resolve().parents[1] / "app" / "data" / "cipla_fy2026.json"
 
 # ── Expected values (Cipla FY2026 fixture ground truth) ─────────────────────
 EXPECTED_INTRINSIC_PRICE = 3462.73   # INR/share (README sample output: ₹3,462)
