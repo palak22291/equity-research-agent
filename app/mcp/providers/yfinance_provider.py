@@ -1,6 +1,71 @@
+import logging
+import math
+
 import yfinance as yf
+from pydantic import BaseModel, field_validator
 
 from app.mcp.providers.base import FinancialDataProvider
+
+logger = logging.getLogger(__name__)
+
+
+class _SanitizedPayload(BaseModel):
+    """Base for provider payloads: numeric fields must be finite floats.
+
+    yfinance frequently returns NaN (which survives float() and round()) or None
+    for missing line items. Left alone, a single NaN poisons every downstream
+    calculator and lands in the report unnoticed. Subclasses list their numeric
+    fields; NaN/None are replaced with 0.0 and logged so a run with degraded
+    inputs is visible, and downstream zero-divisor guards fail loudly instead.
+    """
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _replace_nan_and_none(cls, value, info):
+        if cls.model_fields[info.field_name].annotation is not float:
+            return value  # only numeric fields are sanitised
+        if value is None or (isinstance(value, float) and math.isnan(value)):
+            logger.warning(
+                "yfinance returned %s for numeric field '%s' — replacing with 0.0",
+                value, info.field_name,
+            )
+            return 0.0
+        return value
+
+
+class FinancialStatementsPayload(_SanitizedPayload):
+    ticker: str
+    company_name: str
+    fiscal_year_end: str
+    currency: str
+    total_assets: float
+    current_assets: float
+    inventory: float
+    cash: float
+    accounts_receivable: float
+    current_liabilities: float
+    total_non_current_liabilities: float
+    shareholders_equity: float
+    total_revenue: float
+    gross_profit: float
+    net_income: float
+    ebit: float
+    interest_expense: float
+    tax_expense: float
+    pretax_income: float
+    cfo: float
+    capex: float
+    non_cash_expenses: float
+
+
+class MarketDataPayload(_SanitizedPayload):
+    ticker: str
+    company_name: str
+    currency: str
+    current_price: float
+    shares_outstanding: float
+    beta: float
+    market_cap: float
 
 _SECTOR_GROWTH_RATES = {
     "pharmaceuticals": 0.09,
@@ -105,7 +170,7 @@ class YFinanceProvider(FinancialDataProvider):
             capex            = abs(capex_raw)           if capex_raw    is not None else None
             interest_expense = abs(interest_exp)        if interest_exp is not None else None
 
-            return {
+            return FinancialStatementsPayload.model_validate({
                 "ticker":                      ns_ticker,
                 "company_name":                info.get("longName", ""),
                 "fiscal_year_end":             fiscal_year_end,
@@ -128,7 +193,7 @@ class YFinanceProvider(FinancialDataProvider):
                 "cfo":                         _round2(cfo),
                 "capex":                       _round2(capex),
                 "non_cash_expenses":           _round2(non_cash_exp),
-            }
+            }).model_dump()
 
         except Exception as exc:
             return {"error": str(exc), "ticker": ns_ticker}
@@ -147,7 +212,7 @@ class YFinanceProvider(FinancialDataProvider):
             # shares_outstanding in crore (1 crore = 10,000,000)
             shares_in_crore = (shares_raw / 10_000_000) if shares_raw is not None else None
 
-            return {
+            return MarketDataPayload.model_validate({
                 "ticker":             ns_ticker,
                 "company_name":       info.get("longName", ""),
                 "current_price":      _round2(current_price),
@@ -155,7 +220,7 @@ class YFinanceProvider(FinancialDataProvider):
                 "beta":               _round2(beta),
                 "market_cap":         _round2(market_cap),
                 "currency":           info.get("currency", "INR"),
-            }
+            }).model_dump()
 
         except Exception as exc:
             return {"error": str(exc), "ticker": ns_ticker}

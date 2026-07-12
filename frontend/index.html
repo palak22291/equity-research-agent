@@ -21,6 +21,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; b
 .beta-input { width: 100px; }
 .offline-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #64748b; cursor: pointer; white-space: nowrap; }
 .offline-label input { width: 14px; height: 14px; cursor: pointer; accent-color: #4f6ef7; }
+.key-wrap { position: relative; display: flex; align-items: center; }
+.key-input { width: 185px; }
+.key-hint { position: absolute; top: calc(100% + 2px); left: 2px; font-size: 10px; color: #475569; white-space: nowrap; }
+.key-hint a { color: #64748b; text-decoration: underline; text-underline-offset: 2px; }
+.key-hint a:hover { color: #4f6ef7; }
 .btn-analyze { height: 32px; padding: 0 15px; background: #1d295d; color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.15s, transform 0.1s; letter-spacing: 0.02em; }
 .btn-analyze:hover { background: #0e132a; }
 .btn-analyze:active { transform: scale(0.98); }
@@ -150,6 +155,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; b
       <option value="healthcare">Healthcare</option>
     </select>
     <input class="beta-input" id="beta" type="text" placeholder="β (optional)" />
+    <div class="key-wrap" id="keyWrap">
+      <input class="key-input" id="groqKey" type="password" placeholder="Groq API Key (optional)" autocomplete="off" spellcheck="false" />
+      <div class="key-hint">Get free key at <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a></div>
+    </div>
     <label class="offline-label">
       <input type="checkbox" id="offline" /> Offline demo
     </label>
@@ -289,6 +298,8 @@ async function runAnalysis() {
   try {
     const body={ticker,sector,offline};
     if(beta) body.beta=parseFloat(beta);
+    const groqKey=document.getElementById('groqKey').value.trim();
+    if(groqKey&&!offline) body.groq_api_key=groqKey;
     const res=await fetch('/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await res.json();
     if(!res.ok) throw new Error(data.detail||JSON.stringify(data));
@@ -382,6 +393,10 @@ function renderDashboard(data) {
   document.getElementById('reportText').textContent=data.report||'';
 }
 document.addEventListener('keydown',e=>{if(e.key==='Enter')runAnalysis();});
+// The BYO key only applies to live runs — hide it while "Offline demo" is checked.
+document.getElementById('offline').addEventListener('change',e=>{
+  document.getElementById('keyWrap').classList.toggle('hidden',e.target.checked);
+});
 </script>
 </body>
 </html>

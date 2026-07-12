@@ -7,10 +7,12 @@ Then open http://localhost:8000 in your browser.
 
 Requires:
     pip install fastapi uvicorn
-    GROQ_API_KEY environment variable (for live analysis)
+    GROQ_API_KEY environment variable (for live analysis), or a per-request
+    key supplied by the client in the `groq_api_key` field of POST /analyze.
 """
 from __future__ import annotations
 import json
+import os
 import re
 from pathlib import Path
 
@@ -34,6 +36,8 @@ class AnalyzeRequest(BaseModel):
     sector: str
     beta: float | None = None
     offline: bool = False
+    # Bring-your-own-key: used for this request only, never persisted or logged.
+    groq_api_key: str | None = None
 
 
 @app.get("/health")
@@ -102,6 +106,22 @@ async def analyze(req: AnalyzeRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    user_key = (req.groq_api_key or "").strip()
+    if not user_key and not os.environ.get("GROQ_API_KEY") and not req.offline:
+        raise HTTPException(
+            status_code=400,
+            detail="Please provide a Groq API key or use Offline demo mode",
+        )
+
+    # BYO key: the agents read GROQ_API_KEY when run_pipeline builds them, so a
+    # request-supplied key is set for the duration of this pipeline run and the
+    # server's own key (if any) is restored afterwards. NOTE: os.environ is
+    # process-global, so a concurrent request that starts mid-run would build its
+    # agents with this key; acceptable for the demo, where runs are serialized by
+    # the Groq TPM pacer anyway.
+    server_key = os.environ.get("GROQ_API_KEY")
+    if user_key:
+        os.environ["GROQ_API_KEY"] = user_key
     try:
         report, agent_outputs = await run_pipeline(
             ticker, sector, beta, offline=req.offline
@@ -120,6 +140,12 @@ async def analyze(req: AnalyzeRequest):
             except Exception:
                 pass
         raise HTTPException(status_code=500, detail=msg)
+    finally:
+        if user_key:
+            if server_key is None:
+                os.environ.pop("GROQ_API_KEY", None)
+            else:
+                os.environ["GROQ_API_KEY"] = server_key
 
     # Each agent writes its final text (JSON string) into agent_outputs.
     # data_agent      → raw financial data JSON

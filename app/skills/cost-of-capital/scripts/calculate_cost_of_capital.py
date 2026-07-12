@@ -45,9 +45,13 @@ def main():
         beta           = data["beta"]
         market_return  = data["market_return"]
 
-        if pi == 0:
-            print(json.dumps({"error": "pretax_income is zero — cannot compute tax rate"}))
-            return
+        # A zero or negative pretax income yields a nonsense tax rate (undefined,
+        # or negative — which silently inflates post-tax Kd and NOPAT downstream).
+        if pi is None or pi <= 0:
+            raise ValueError(
+                "Cannot compute cost of capital for loss-making company "
+                f"(pretax_income={pi} crore — tax rate would be undefined or negative)"
+            )
         if not ltd or ltd == 0:
             print(json.dumps({"error": "total_non_current_liabilities is zero — cannot compute cost of debt"}))
             return
