@@ -1,9 +1,9 @@
 fastapi
 uvicorn[standard]
-google-adk
-litellm
-yfinance
-fastmcp
+google-adk==2.3.0
+litellm==1.83.7
+yfinance==1.4.1
+fastmcp==3.4.2
 python-dotenv
 pydantic
 httpx

@@ -16,6 +16,8 @@ from google.adk.tools.mcp_tool.mcp_toolset import (
     StdioServerParameters,
 )
 
+from app.agents.tpm_pacer import cooldown_before_agent, mark_llm_activity
+
 # Project root so the MCP server subprocess can import the `app` package when
 # launched via `python3 -m app.mcp.financial_data_server` (cwd is added to sys.path).
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -40,7 +42,12 @@ def create_data_agent() -> LlmAgent:
     return LlmAgent(
         name="data_agent",
         model=LiteLlm(
-            model="groq/llama-3.3-70b-versatile",
+            # Use the 8B model: this agent's job is trivial (call one tool, echo
+            # its JSON). The 70B model consumed ~9.4k tokens on just the first of
+            # its two LLM rounds, leaving no headroom for the second round within
+            # Groq's 12k tokens-per-minute free-tier limit. The 8B model produces
+            # identical results here with ~3× fewer tokens.
+            model="groq/llama-3.1-8b-instant",
             api_key=os.environ.get("GROQ_API_KEY"),
             # Cap completion tokens so Groq reserves only what the output needs
             # (this agent echoes a ~430-token JSON), keeping each request well
@@ -48,16 +55,19 @@ def create_data_agent() -> LlmAgent:
             # a large default and inflates the per-request token count.
             max_tokens=1200,
         ),
-        instruction="""Call fetch_all_financial_data(ticker, sector) EXACTLY ONCE.
-Use the ticker and sector from the user message.
+        instruction="""You have ONE tool available called exactly: fetch_all_financial_data
+Call it EXACTLY ONCE with (ticker, sector) from the user message.
 If the user message contains "beta_override=<value>", extract that number and pass it \
-as the beta_override argument to fetch_all_financial_data.
+as the beta_override argument.
 After the tool returns, immediately output the raw JSON string it returned.
-Do not call the tool again.
+Do not call the tool again. Do not prefix or namespace the tool name.
 Do not add any commentary, analysis, explanation, or markdown.
 Your entire response must be the raw JSON string from the tool and nothing else.""",
         tools=[financial_data_mcp],
         output_key="temp:financial_data",
+        # Timestamp each LLM call so downstream agents' cooldowns fire correctly.
+        before_agent_callback=cooldown_before_agent,
+        after_model_callback=mark_llm_activity,
     )
 
 
