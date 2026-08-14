@@ -75,6 +75,12 @@ def _parse_stage(raw, stage: str) -> dict:
         fenced = _FENCE_RE.match(text)
         if fenced:
             text = fenced.group(1).strip()
+        # Smaller LLMs sometimes wrap JSON in outer string quotes:
+        #   "{"ticker":"CIPLA.NS",...}"
+        # Strip them so json.loads sees the raw object.
+        if (text.startswith('"') and text.endswith('"')
+                and len(text) > 2 and text[1] == '{'):
+            text = text[1:-1]
         try:
             parsed = json.loads(text)
         except (json.JSONDecodeError, TypeError):

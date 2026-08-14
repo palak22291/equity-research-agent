@@ -17,16 +17,15 @@ from app.agents.valuation_agent import create_valuation_agent
 def build_orchestrator(offline: bool = False, beta_override: float = 0.0) -> SequentialAgent:
     """Build the 4-agent sequential pipeline.
 
-    When offline=True the live data_agent (MCP server / yfinance) is swapped for the
-    OfflineDataAgent, which serves cached fixture data — no network and no LLM call for
-    the data step.
+    When offline=True the data step serves cached fixture data instead of
+    calling yfinance. Both modes use a custom BaseAgent (no LLM) for the
+    data step; only the analysis/valuation/report agents use Groq.
 
     Fresh sub-agent instances are created on every call via the per-agent factories, so
     two orchestrators never share a sub-agent (ADK forbids a sub-agent having two
-    parents). beta_override is only applied in offline mode (online mode receives beta
-    through the user message).
+    parents).
     """
-    data_step = create_offline_data_agent(beta_override) if offline else create_data_agent()
+    data_step = create_offline_data_agent(beta_override) if offline else create_data_agent(beta_override)
     return SequentialAgent(
         name="equity_research_orchestrator",
         sub_agents=[
