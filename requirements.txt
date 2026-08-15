@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
-google-adk
+google-adk>=2.3.0,<3.0.0
 litellm
 yfinance
 fastmcp
