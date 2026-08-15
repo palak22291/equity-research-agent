@@ -104,8 +104,8 @@ def create_analysis_agent() -> LlmAgent:
         model=LiteLlm(
             model="groq/llama-3.3-70b-versatile",
             api_key=os.environ.get("GROQ_API_KEY"),
-            # Cap completion tokens (output is a ~700-token combined JSON) so each
-            # request stays well under Groq's 12k tokens-per-minute limit.
+            # Cap completion tokens to keep each request under Groq's TPM limit.
+            # The 62s+ TPM cooldown between agents ensures a fresh 12k window.
             max_tokens=1500,
         ),
         instruction="""You are a financial analysis agent. Given financial statement data, \

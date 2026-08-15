@@ -112,11 +112,6 @@ def create_valuation_agent() -> LlmAgent:
         model=LiteLlm(
             model="groq/llama-3.3-70b-versatile",
             api_key=os.environ.get("GROQ_API_KEY"),
-            # Cap completion tokens (output is a ~600-token combined JSON). The DCF
-            # depends on the cost-of-capital output, so both run inside ONE tool
-            # (run_valuation) and the agent makes a single LLM round — well under
-            # the Groq 12k tokens-per-minute limit. Disable parallel tool calls as
-            # belt-and-suspenders against any extra round-trip.
             max_tokens=1200,
             parallel_tool_calls=False,
         ),
