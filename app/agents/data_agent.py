@@ -48,6 +48,9 @@ class OnlineDataAgent(BaseAgent):
         except Exception as exc:
             data = {"error": f"fetch_all_financial_data failed: {exc}"}
 
+        if "error" in data:
+            raise RuntimeError(data["error"])
+
         payload = json.dumps(data)
 
         yield Event(

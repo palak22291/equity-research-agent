@@ -4,6 +4,7 @@ import logging
 import math
 import os
 import time
+import requests
 from pathlib import Path
 
 import yfinance as yf
@@ -160,13 +161,21 @@ def _get(df, *labels):
 
 class YFinanceProvider(FinancialDataProvider):
 
+    def _get_yf_session(self) -> requests.Session:
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        })
+        return session
+
     def get_financial_statements(self, ticker: str) -> dict:
         ns_ticker = _ensure_ns_suffix(ticker)
         cache_path = _cache_key("statements", ns_ticker)
         last_error = None
+        session = self._get_yf_session()
         for attempt in range(4):  # up to 4 attempts (initial + 3 retries)
             try:
-                stock = yf.Ticker(ns_ticker)
+                stock = yf.Ticker(ns_ticker, session=session)
                 info = stock.info or {}
 
                 income = stock.financials          # columns = fiscal year ends, rows = line items
@@ -249,7 +258,7 @@ class YFinanceProvider(FinancialDataProvider):
                 last_error = str(exc)
                 # Retry on rate limits (Yahoo Finance 429s common on shared IPs)
                 if "Too Many Requests" in last_error or "429" in last_error:
-                    wait = 5 * (2 ** attempt)  # 5s, 10s, 20s, 40s
+                    wait = 2 * (2 ** attempt)  # 2s, 4s, 8s, 16s
                     logger.warning(
                         "yfinance rate limited (attempt %d/4), retrying in %ds: %s",
                         attempt + 1, wait, last_error,
@@ -276,9 +285,10 @@ class YFinanceProvider(FinancialDataProvider):
         ns_ticker = _ensure_ns_suffix(ticker)
         cache_path = _cache_key("market", ns_ticker)
         last_error = None
+        session = self._get_yf_session()
         for attempt in range(4):
             try:
-                stock = yf.Ticker(ns_ticker)
+                stock = yf.Ticker(ns_ticker, session=session)
                 info = stock.info or {}
 
                 current_price     = info.get("currentPrice") or info.get("regularMarketPrice")
@@ -305,7 +315,7 @@ class YFinanceProvider(FinancialDataProvider):
             except Exception as exc:
                 last_error = str(exc)
                 if "Too Many Requests" in last_error or "429" in last_error:
-                    wait = 5 * (2 ** attempt)
+                    wait = 2 * (2 ** attempt)  # 2s, 4s, 8s, 16s
                     logger.warning(
                         "yfinance market data rate limited (attempt %d/4), retrying in %ds",
                         attempt + 1, wait,
