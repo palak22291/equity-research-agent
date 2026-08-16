@@ -1,6 +1,10 @@
+import hashlib
+import json as _json
 import logging
 import math
+import os
 import time
+from pathlib import Path
 
 import yfinance as yf
 from pydantic import BaseModel, field_validator
@@ -8,6 +12,43 @@ from pydantic import BaseModel, field_validator
 from app.mcp.providers.base import FinancialDataProvider
 
 logger = logging.getLogger(__name__)
+
+# ── yfinance response cache ──────────────────────────────────────────────────
+# Yahoo Finance aggressively rate-limits cloud/shared IPs (Render, Railway, etc).
+# We cache successful responses to disk so subsequent requests for the same ticker
+# serve instantly from cache instead of failing with 429.
+# Cache TTL: 24 hours (financial statements change at most quarterly).
+_CACHE_DIR = Path(os.environ.get("YFINANCE_CACHE_DIR",
+                                  Path(__file__).resolve().parents[2] / "data" / "yfinance_cache"))
+_CACHE_TTL_SECONDS = int(os.environ.get("YFINANCE_CACHE_TTL", 86400))  # 24h default
+
+
+def _cache_key(prefix: str, ticker: str) -> Path:
+    """Return the cache file path for a given prefix + ticker."""
+    safe = hashlib.md5(f"{prefix}:{ticker}".encode()).hexdigest()[:12]
+    return _CACHE_DIR / f"{prefix}_{ticker.replace('.', '_')}_{safe}.json"
+
+
+def _read_cache(path: Path) -> dict | None:
+    """Read cache file if it exists and hasn't expired."""
+    if not path.exists():
+        return None
+    try:
+        age = time.time() - path.stat().st_mtime
+        if age > _CACHE_TTL_SECONDS:
+            return None  # expired
+        return _json.loads(path.read_text())
+    except Exception:
+        return None
+
+
+def _write_cache(path: Path, data: dict) -> None:
+    """Write data to cache file."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_json.dumps(data))
+    except Exception as exc:
+        logger.warning("Failed to write yfinance cache: %s", exc)
 
 
 class _SanitizedPayload(BaseModel):
@@ -121,6 +162,7 @@ class YFinanceProvider(FinancialDataProvider):
 
     def get_financial_statements(self, ticker: str) -> dict:
         ns_ticker = _ensure_ns_suffix(ticker)
+        cache_path = _cache_key("statements", ns_ticker)
         last_error = None
         for attempt in range(4):  # up to 4 attempts (initial + 3 retries)
             try:
@@ -173,7 +215,7 @@ class YFinanceProvider(FinancialDataProvider):
                 capex            = abs(capex_raw)           if capex_raw    is not None else None
                 interest_expense = abs(interest_exp)        if interest_exp is not None else None
 
-                return FinancialStatementsPayload.model_validate({
+                payload = FinancialStatementsPayload.model_validate({
                     "ticker":                      ns_ticker,
                     "company_name":                info.get("longName", ""),
                     "fiscal_year_end":             fiscal_year_end,
@@ -196,7 +238,12 @@ class YFinanceProvider(FinancialDataProvider):
                     "cfo":                         _round2(cfo),
                     "capex":                       _round2(capex),
                     "non_cash_expenses":           _round2(non_cash_exp),
-                }).model_dump()
+                })
+                result = payload.model_dump()
+
+                # Cache successful response for future rate-limited requests.
+                _write_cache(cache_path, result)
+                return result
 
             except Exception as exc:
                 last_error = str(exc)
@@ -211,10 +258,23 @@ class YFinanceProvider(FinancialDataProvider):
                     continue
                 return {"error": last_error, "ticker": ns_ticker}
 
+        # All retries exhausted — fall back to cache (even if expired).
+        cached = _read_cache(cache_path)
+        if cached is None:
+            # Try reading without TTL check as last resort.
+            try:
+                if cache_path.exists():
+                    cached = _json.loads(cache_path.read_text())
+            except Exception:
+                pass
+        if cached:
+            logger.info("Serving cached yfinance data for %s (rate limited)", ns_ticker)
+            return cached
         return {"error": f"yfinance rate limited after 4 attempts: {last_error}", "ticker": ns_ticker}
 
     def get_market_data(self, ticker: str) -> dict:
         ns_ticker = _ensure_ns_suffix(ticker)
+        cache_path = _cache_key("market", ns_ticker)
         last_error = None
         for attempt in range(4):
             try:
@@ -229,7 +289,7 @@ class YFinanceProvider(FinancialDataProvider):
                 # shares_outstanding in crore (1 crore = 10,000,000)
                 shares_in_crore = (shares_raw / 10_000_000) if shares_raw is not None else None
 
-                return MarketDataPayload.model_validate({
+                result = MarketDataPayload.model_validate({
                     "ticker":             ns_ticker,
                     "company_name":       info.get("longName", ""),
                     "current_price":      _round2(current_price),
@@ -238,6 +298,9 @@ class YFinanceProvider(FinancialDataProvider):
                     "market_cap":         _round2(market_cap),
                     "currency":           info.get("currency", "INR"),
                 }).model_dump()
+
+                _write_cache(cache_path, result)
+                return result
 
             except Exception as exc:
                 last_error = str(exc)
@@ -251,6 +314,17 @@ class YFinanceProvider(FinancialDataProvider):
                     continue
                 return {"error": last_error, "ticker": ns_ticker}
 
+        # All retries exhausted — fall back to cache (even if expired).
+        cached = _read_cache(cache_path)
+        if cached is None:
+            try:
+                if cache_path.exists():
+                    cached = _json.loads(cache_path.read_text())
+            except Exception:
+                pass
+        if cached:
+            logger.info("Serving cached market data for %s (rate limited)", ns_ticker)
+            return cached
         return {"error": f"yfinance rate limited after 4 attempts: {last_error}", "ticker": ns_ticker}
 
     def get_sector_growth_rate(self, sector: str) -> float:
