@@ -26,9 +26,9 @@ import asyncio
 import time
 
 # Rolling TPM window length, plus generous safety margin. Groq's advertised
-# 60s window sometimes needs extra headroom to fully reset; 75s ensures the
+# 60s window sometimes needs extra headroom to fully reset; 65s ensures the
 # previous agent's tokens are completely aged out.
-_WINDOW_SECONDS = 75.0
+_WINDOW_SECONDS = 65.0
 
 # Monotonic timestamp of the most recently completed LLM call across all agents.
 # 0.0 means no LLM call has happened yet this process.

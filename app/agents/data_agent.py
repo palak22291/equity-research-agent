@@ -1,93 +1,67 @@
-"""Data agent — fetches all financial data by calling the provider directly.
+"""Data agent — fetches all financial data via the financial-data MCP server.
 
-The previous LLM-based approach (call MCP tool via LlmAgent, echo JSON) was
-fragile: the 70B model exceeded Groq's 12k TPM limit, and the 8B model
-couldn't reliably output raw JSON (it wrapped it in quotes, triple-braces,
-etc.). Since this agent's job is purely mechanical (call a function, return
-the result), it now uses a custom BaseAgent — no LLM, no MCP subprocess,
-no parsing issues.
-
-The underlying data source is the same YFinanceProvider used by the MCP
-server. This agent calls `fetch_all_financial_data()` directly in-process.
+The data source is the FastMCP server in app/mcp/financial_data_server.py, launched
+as a stdio subprocess and connected through ADK's MCPToolset. The agent calls the
+server's `fetch_all_financial_data` tool — a genuine MCP tool call, not a direct
+Python invocation of the provider.
 """
-import json
 import os
-from typing import AsyncGenerator
+from pathlib import Path
 
-from google.adk.agents import BaseAgent
-from google.adk.agents.invocation_context import InvocationContext
-from google.adk.events import Event, EventActions
-from google.genai import types
+from google.adk.agents import LlmAgent
+from google.adk.models.lite_llm import LiteLlm
+from google.adk.tools.mcp_tool.mcp_toolset import (
+    MCPToolset,
+    StdioConnectionParams,
+    StdioServerParameters,
+)
+from app.agents.tpm_pacer import cooldown_before_agent, mark_llm_activity
 
-# Re-use the same aggregation logic that the MCP server's
-# `fetch_all_financial_data` tool calls under the hood.
-from app.mcp.financial_data_server import fetch_all_financial_data as _fetch
+# Project root so the MCP server subprocess can import the `app` package when
+# launched via `python3 -m app.mcp.financial_data_server` (cwd is added to sys.path).
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
-
-class OnlineDataAgent(BaseAgent):
-    """Fetches live financial data via yfinance (no LLM, no MCP subprocess).
-
-    Calls the same `fetch_all_financial_data` function that the MCP server
-    exposes, but directly in-process. Writes the JSON result to
-    temp:financial_data in session state, matching the output_key contract
-    expected by downstream agents.
-    """
-
-    beta_override: float = 0.0
-
-    async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
-        # Extract ticker and sector from the user message.
-        ticker, sector = self._parse_user_message(ctx)
-
-        try:
-            data = _fetch(
-                ticker=ticker,
-                sector=sector,
-                beta_override=self.beta_override,
-            )
-        except Exception as exc:
-            data = {"error": f"fetch_all_financial_data failed: {exc}"}
-
-        if "error" in data:
-            raise RuntimeError(data["error"])
-
-        payload = json.dumps(data)
-
-        yield Event(
-            author=self.name,
-            invocation_id=ctx.invocation_id,
-            content=types.Content(role="model", parts=[types.Part(text=payload)]),
-            actions=EventActions(state_delta={"temp:financial_data": payload}),
-        )
-
-    @staticmethod
-    def _parse_user_message(ctx: InvocationContext) -> tuple[str, str]:
-        """Extract ticker and sector from the user prompt.
-
-        Expected format: 'Analyze TICKER in SECTOR sector [with beta_override=X]'
-        """
-        text = ""
-        if ctx.user_content and ctx.user_content.parts:
-            text = ctx.user_content.parts[0].text or ""
-
-        # Fallback defaults
-        ticker = "CIPLA"
-        sector = "pharmaceuticals"
-
-        parts = text.split()
-        # "Analyze TICKER in SECTOR sector"
-        if len(parts) >= 2:
-            ticker = parts[1].upper()
-        if len(parts) >= 4:
-            sector = parts[3].lower()
-
-        return ticker, sector
+# Connect to the financial-data MCP server over stdio. Only the aggregating
+# `fetch_all_financial_data` tool is exposed to this agent (the server also
+# offers the three lower-level tools, which this agent does not need).
+financial_data_mcp = MCPToolset(
+    connection_params=StdioConnectionParams(
+        server_params=StdioServerParameters(
+            command="python3",
+            args=["-m", "app.mcp.financial_data_server"],
+            cwd=str(_PROJECT_ROOT),
+        ),
+        timeout=120.0,
+    ),
+    tool_filter=["fetch_all_financial_data"],
+)
 
 
-def create_data_agent(beta_override: float = 0.0) -> OnlineDataAgent:
-    return OnlineDataAgent(
+def create_data_agent(beta_override: float = 0.0) -> LlmAgent:
+    instruction = f"""Call fetch_all_financial_data(ticker, sector) EXACTLY ONCE.
+Use the ticker and sector from the user message.
+Extract the beta_override value ({beta_override}) and pass it \
+as the beta_override argument to fetch_all_financial_data.
+After the tool returns, immediately output the raw JSON string it returned.
+Do not call the tool again.
+Do not add any commentary, analysis, explanation, or markdown.
+Your entire response must be the raw JSON string from the tool and nothing else."""
+    return LlmAgent(
         name="data_agent",
-        beta_override=beta_override,
+        model=LiteLlm(
+            model="groq/llama-3.3-70b-versatile",
+            api_key=os.environ.get("GROQ_API_KEY"),
+            # Cap completion tokens so Groq reserves only what the output needs
+            # (this agent echoes a ~430-token JSON), keeping each request well
+            # under the 12k tokens-per-minute limit. Without a cap, Groq reserves
+            # a large default and inflates the per-request token count.
+            max_tokens=1200,
+        ),
+        instruction=instruction,
+        tools=[financial_data_mcp],
+        output_key="temp:financial_data",
+        before_agent_callback=cooldown_before_agent,
+        after_model_callback=mark_llm_activity,
     )
 
 
