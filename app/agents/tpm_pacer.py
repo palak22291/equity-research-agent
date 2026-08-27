@@ -24,6 +24,30 @@ no-op until something has actually consumed tokens.
 """
 import asyncio
 import time
+import litellm
+
+# Monkey-patch litellm to strip reasoning_content from messages, because Groq's
+# API rejects conversation histories that contain reasoning_content fields on the
+# assistant role (which openai/gpt-oss-120b outputs).
+_original_acompletion = litellm.acompletion
+_original_completion = litellm.completion
+
+async def _patched_acompletion(*args, **kwargs):
+    if "messages" in kwargs:
+        for msg in kwargs["messages"]:
+            if isinstance(msg, dict) and "reasoning_content" in msg:
+                del msg["reasoning_content"]
+    return await _original_acompletion(*args, **kwargs)
+
+def _patched_completion(*args, **kwargs):
+    if "messages" in kwargs:
+        for msg in kwargs["messages"]:
+            if isinstance(msg, dict) and "reasoning_content" in msg:
+                del msg["reasoning_content"]
+    return _original_completion(*args, **kwargs)
+
+litellm.acompletion = _patched_acompletion
+litellm.completion = _patched_completion
 
 # Rolling TPM window length, plus generous safety margin. Groq's advertised
 # 60s window sometimes needs extra headroom to fully reset; 65s ensures the
