@@ -110,7 +110,7 @@ def create_valuation_agent() -> LlmAgent:
     return LlmAgent(
         name="valuation_agent",
         model=LiteLlm(
-            model="groq/llama-3.3-70b-versatile",
+            model="groq/llama-3.1-70b-versatile",
             api_key=os.environ.get("GROQ_API_KEY"),
             # Cap completion tokens (output is a ~600-token combined JSON). The DCF
             # depends on the cost-of-capital output, so both run inside ONE tool
