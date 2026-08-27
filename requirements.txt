@@ -3,6 +3,7 @@ uvicorn[standard]
 google-adk>=2.3.0,<3.0.0
 litellm
 yfinance
+curl_cffi
 fastmcp
 python-dotenv
 pydantic
