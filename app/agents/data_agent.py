@@ -49,7 +49,7 @@ Your entire response must be the raw JSON string from the tool and nothing else.
     return LlmAgent(
         name="data_agent",
         model=LiteLlm(
-            model="groq/llama-3.1-70b-versatile",
+            model="groq/openai/gpt-oss-120b",
             api_key=os.environ.get("GROQ_API_KEY"),
             # Cap completion tokens so Groq reserves only what the output needs
             # (this agent echoes a ~430-token JSON), keeping each request well

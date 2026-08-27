@@ -102,7 +102,7 @@ def create_analysis_agent() -> LlmAgent:
     return LlmAgent(
         name="analysis_agent",
         model=LiteLlm(
-            model="groq/llama-3.1-70b-versatile",
+            model="groq/openai/gpt-oss-120b",
             api_key=os.environ.get("GROQ_API_KEY"),
             # Cap completion tokens (output is a ~700-token combined JSON) so each
             # request stays well under Groq's 12k tokens-per-minute limit.
