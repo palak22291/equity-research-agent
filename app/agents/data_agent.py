@@ -49,14 +49,12 @@ Your entire response must be the raw JSON string from the tool and nothing else.
     return LlmAgent(
         name="data_agent",
         model=LiteLlm(
-            model="groq/openai/gpt-oss-120b",
+            model="groq/openai/gpt-oss-20b",
             api_key=os.environ.get("GROQ_API_KEY"),
-            # Cap completion tokens so Groq reserves only what the output needs
-            # (this agent echoes a ~430-token JSON), keeping each request well
-            # under the 12k tokens-per-minute limit. Without a cap, Groq reserves
-            # a large default and inflates the per-request token count. Disable
-            # parallel tool calls to prevent OSS models from mangling tool arguments.
-            max_tokens=1200,
+            # Use the faster 20B model which does less heavy reasoning to prevent
+            # output truncation. Cap completion to 2000 to easily fit the JSON
+            # while keeping requests under Groq's rate limit.
+            max_tokens=2000,
             parallel_tool_calls=False,
         ),
         instruction=instruction,

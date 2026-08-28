@@ -11,7 +11,7 @@ def create_report_agent() -> LlmAgent:
     return LlmAgent(
         name="report_agent",
         model=LiteLlm(
-            model="groq/openai/gpt-oss-120b",
+            model="groq/openai/gpt-oss-20b",
             api_key=os.environ.get("GROQ_API_KEY"),
             max_tokens=2000,
         ),

@@ -49,10 +49,10 @@ def _patched_completion(*args, **kwargs):
 litellm.acompletion = _patched_acompletion
 litellm.completion = _patched_completion
 
-# Rolling TPM window length, plus generous safety margin. Groq's advertised
-# 60s window sometimes needs extra headroom to fully reset; 65s ensures the
-# previous agent's tokens are completely aged out.
-_WINDOW_SECONDS = 65.0
+# Rolling TPM window length, plus generous safety margin.# Groq has a strict Tokens-Per-Minute (TPM) limit on free tiers (e.g., 8,000 for
+# OSS models). Since agents use 4k-5k tokens per run, we must space them out.
+# We use 90 seconds to ensure the rolling window completely flushes.
+_WINDOW_SECONDS = 90.0
 
 # Monotonic timestamp of the most recently completed LLM call across all agents.
 # 0.0 means no LLM call has happened yet this process.
