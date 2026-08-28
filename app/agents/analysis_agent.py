@@ -104,9 +104,12 @@ def create_analysis_agent() -> LlmAgent:
         model=LiteLlm(
             model="groq/openai/gpt-oss-120b",
             api_key=os.environ.get("GROQ_API_KEY"),
-            # Cap completion tokens (output is a ~700-token combined JSON) so each
-            # request stays well under Groq's 12k tokens-per-minute limit.
+            # Cap completion tokens to prevent Groq from reserving too much of the
+            # TPM limit. This agent echoes the two tool results + some framing JSON,
+            # which fits well under 1500 tokens. Disable parallel tool calls to
+            # prevent OSS models from mangling tool arguments when emitting multiple tools.
             max_tokens=1500,
+            parallel_tool_calls=False,
         ),
         instruction="""You are a financial analysis agent. Given financial statement data, \
 calculate all financial ratios and free cash flows using the deterministic calculator \

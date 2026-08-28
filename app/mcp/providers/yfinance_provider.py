@@ -203,14 +203,30 @@ class YFinanceProvider(FinancialDataProvider):
         try:
             stock = yf.Ticker(ns_ticker)
             info = stock.info or {}
+            fast = stock.fast_info
 
-            current_price     = info.get("currentPrice") or info.get("regularMarketPrice")
-            shares_raw        = info.get("sharesOutstanding")
-            beta              = info.get("beta")
-            market_cap        = info.get("marketCap")
+            # fast_info is much more reliable than info (which often silently fails and returns {})
+            try:
+                current_price = fast.last_price
+            except Exception:
+                current_price = info.get("currentPrice") or info.get("regularMarketPrice") or 0.0
+
+            try:
+                shares_raw = fast.shares
+            except Exception:
+                shares_raw = info.get("sharesOutstanding")
+
+            try:
+                market_cap = fast.market_cap
+            except Exception:
+                market_cap = info.get("marketCap")
+
+            beta = info.get("beta")
+            if not beta or beta == 0.0:
+                beta = 1.0  # Fallback to market average beta instead of 0.0 to prevent Ke = Rf
 
             # shares_outstanding in crore (1 crore = 10,000,000)
-            shares_in_crore = (shares_raw / 10_000_000) if shares_raw is not None else None
+            shares_in_crore = (shares_raw / 10_000_000) if shares_raw is not None else 0.0
 
             return MarketDataPayload.model_validate({
                 "ticker":             ns_ticker,
