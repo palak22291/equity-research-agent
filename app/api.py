@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import asyncio
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -25,6 +26,9 @@ from pydantic import BaseModel
 
 from app.main import run_pipeline
 from app.security.guardrails import validate_beta, validate_sector, validate_ticker
+
+# Global lock to prevent concurrent pipeline runs from blowing out Groq rate limits
+_pipeline_lock = asyncio.Lock()
 
 _FRONTEND = Path(__file__).parent.parent / "frontend" / "index.html"
 
@@ -128,10 +132,12 @@ async def analyze(req: AnalyzeRequest):
     server_key = os.environ.get("GROQ_API_KEY")
     if user_key:
         os.environ["GROQ_API_KEY"] = user_key
+        
     try:
-        report, agent_outputs = await run_pipeline(
-            ticker, sector, beta, offline=req.offline
-        )
+        async with _pipeline_lock:
+            report, agent_outputs = await run_pipeline(
+                ticker, sector, beta, offline=req.offline
+            )
     except ValueError as exc:
         # e.g. offline mode requested for a ticker the fixture doesn't cover.
         raise HTTPException(status_code=400, detail=str(exc))
