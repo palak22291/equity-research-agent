@@ -79,6 +79,7 @@ _SECTOR_GROWTH_RATES = {
     "cement": 0.07,
     "power": 0.05,
     "healthcare": 0.11,
+    "e_commerce": 0.15,
     "default": 0.08,
 }
 

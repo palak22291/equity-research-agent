@@ -7,7 +7,7 @@ import re
 VALID_SECTORS = {
     'pharmaceuticals', 'it', 'banking', 'fmcg',
     'automobiles', 'oil_gas', 'telecom', 'metals',
-    'cement', 'power', 'healthcare', 'default',
+    'cement', 'power', 'healthcare', 'e_commerce', 'default',
 }
 
 
