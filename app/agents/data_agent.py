@@ -42,10 +42,13 @@ def create_data_agent(beta_override: float = 0.0) -> LlmAgent:
 Use the ticker and sector from the user message.
 Extract the beta_override value ({beta_override}) and pass it \
 as the beta_override argument to fetch_all_financial_data.
-After the tool returns, immediately output the raw JSON string it returned.
+After the tool returns, immediately output the clean inner JSON object it returned.
+CRITICAL: The tool returns a wrapper structure like {{"content": [{{"text": "{{...}}"}}]}}.
+You MUST extract and output ONLY the clean, unescaped inner JSON object starting with {{"ticker": ...}}.
+Do NOT output the "content" wrapper, and do NOT output escaped quotes or backslashes.
 Do not call the tool again.
 Do not add any commentary, analysis, explanation, or markdown.
-Your entire response must be the raw JSON string from the tool and nothing else."""
+Your entire response must be the clean, parsed JSON object and nothing else."""
     return LlmAgent(
         name="data_agent",
         model=LiteLlm(
