@@ -1,42 +1,72 @@
 """Shared tokens-per-minute (TPM) pacer for the Groq-backed agents.
 
-Groq's free tier enforces a rolling 60-second tokens-per-minute limit (varies by
-model). Each agent's own burst fits under that limit, but two agents' bursts
-back-to-back do not — so a full window must separate the *last* LLM call of one
-agent from the *first* LLM call of the next.
+Groq's free tier enforces a rolling 60-second tokens-per-minute limit (e.g. 8000).
+Because our agents use Tool Calling, they often make TWO LLM calls back-to-back 
+inside the same agent (one to select the tool, one to return the result). 
+These combined calls easily exceed 8000 tokens and crash the pipeline.
 
-The cooldown must happen BEFORE an agent's first LLM call. ADK only emits an
-agent's first event *after* that call returns, so a reactive sleep in the runner
-loop fires too late (the request — and the 429 — already happened). The correct
-hook is `before_agent_callback`, which runs before the agent's LLM flow starts.
-
-Usage (per LLM agent):
-    LlmAgent(
-        ...,
-        before_agent_callback=cooldown_before_agent,
-        after_model_callback=mark_llm_activity,
-    )
-
-The pacer is time-based: it records when the most recent LLM call completed and
-only sleeps for the remainder of the window. Agents that make no LLM call (e.g.
-the offline data step) never mark activity, so the next agent's cooldown is a
-no-op until something has actually consumed tokens.
+This pacer intercepts all LiteLLM requests, estimates the tokens, and if the 
+current rolling window is too full, it sleeps BEFORE sending the request.
 """
 import asyncio
 import time
 import litellm
 
-# Monkey-patch litellm to strip reasoning_content from messages, because Groq's
-# API rejects conversation histories that contain reasoning_content fields on the
-# assistant role (which openai/gpt-oss-120b outputs).
+_TPM_LIMIT = 7500  # Safe margin below 8000
+_TPM_WINDOW = 65.0 # Seconds
+_token_history = [] # List of (timestamp, estimated_tokens)
+
+def _estimate_tokens(kwargs):
+    prompt_chars = 0
+    for msg in kwargs.get("messages", []):
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            prompt_chars += len(content)
+        else:
+            prompt_chars += len(str(content))
+    # Roughly 4 chars per token, plus LiteLLM/system prompt overhead
+    prompt_tokens = (prompt_chars // 4) + 150
+    # Add the requested completion tokens
+    max_tokens = kwargs.get("max_tokens", 2000)
+    return prompt_tokens + max_tokens
+
+async def _smart_pacer_wait(requested_tokens):
+    global _token_history
+    while True:
+        now = time.monotonic()
+        # Evict old entries outside the 65s window
+        _token_history = [(t, v) for (t, v) in _token_history if now - t < _TPM_WINDOW]
+        current_used = sum(v for t, v in _token_history)
+        
+        if current_used + requested_tokens > _TPM_LIMIT:
+            if not _token_history:
+                # Single request is massive (e.g. 8000+). Pass it through and pray, 
+                # otherwise we would infinite loop.
+                _token_history.append((time.monotonic(), requested_tokens))
+                return
+            # Sleep until the oldest request in the window expires
+            wait_time = _TPM_WINDOW - (now - _token_history[0][0]) + 0.5
+            print(f"[pacer] {current_used} used + {requested_tokens} req > {_TPM_LIMIT}. Sleeping {wait_time:.1f}s...", flush=True)
+            await asyncio.sleep(wait_time)
+        else:
+            # We have room in the bucket!
+            _token_history.append((time.monotonic(), requested_tokens))
+            return
+
 _original_acompletion = litellm.acompletion
 _original_completion = litellm.completion
 
 async def _patched_acompletion(*args, **kwargs):
+    # Strip OSS model reasoning blocks that crash Groq API
     if "messages" in kwargs:
         for msg in kwargs["messages"]:
             if isinstance(msg, dict) and "reasoning_content" in msg:
                 del msg["reasoning_content"]
+                
+    # Pace the request dynamically based on token size!
+    tokens = _estimate_tokens(kwargs)
+    await _smart_pacer_wait(tokens)
+    
     return await _original_acompletion(*args, **kwargs)
 
 def _patched_completion(*args, **kwargs):
@@ -49,40 +79,10 @@ def _patched_completion(*args, **kwargs):
 litellm.acompletion = _patched_acompletion
 litellm.completion = _patched_completion
 
-# Rolling TPM window length, plus generous safety margin.# Groq has a strict Tokens-Per-Minute (TPM) limit on free tiers (e.g., 8,000 for
-# OSS models). Since agents use 4k-5k tokens per run, we must space them out.
-# We use 90 seconds to ensure the rolling window completely flushes.
-_WINDOW_SECONDS = 90.0
-
-# Monotonic timestamp of the most recently completed LLM call across all agents.
-# 0.0 means no LLM call has happened yet this process.
-_last_llm_activity = 0.0
-
-
+# The ADK callbacks are now no-ops since the pacing is handled seamlessly 
+# at the network level by the patched acompletion above!
 def mark_llm_activity(callback_context=None, llm_response=None):
-    """after_model_callback: record that an LLM call just completed.
-
-    Accepts ADK's (callback_context, llm_response) arguments but ignores them.
-    Returns None so ADK uses the model's real response unchanged.
-    """
-    global _last_llm_activity
-    _last_llm_activity = time.monotonic()
     return None
 
-
 async def cooldown_before_agent(callback_context=None):
-    """before_agent_callback: wait out the remainder of the TPM window.
-
-    Sleeps only as long as needed so a full window separates the previous agent's
-    last LLM call from this agent's first one. No-op when nothing has run yet.
-    Returns None so the agent proceeds normally.
-    """
-    if _last_llm_activity == 0.0:
-        return None  # nothing has consumed tokens yet — no need to wait
-
-    wait = _WINDOW_SECONDS - (time.monotonic() - _last_llm_activity)
-    if wait > 0:
-        name = getattr(callback_context, "agent_name", "next agent")
-        print(f"[pipeline] TPM cooldown: waiting {wait:.0f}s before {name}...", flush=True)
-        await asyncio.sleep(wait)
     return None
