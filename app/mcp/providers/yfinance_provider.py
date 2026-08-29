@@ -198,6 +198,32 @@ class YFinanceProvider(FinancialDataProvider):
         except Exception as exc:
             return {"error": str(exc), "ticker": ns_ticker}
 
+    def _calculate_historical_beta(self, ticker: str) -> float:
+        """Calculate 5-year monthly beta using history() endpoint which bypasses Cloudflare."""
+        import pandas as pd
+        
+        index_ticker = "^GSPC"
+        if ticker.endswith(".NS"):
+            index_ticker = "^NSEI"
+        elif ticker.endswith(".BO"):
+            index_ticker = "^BSESN"
+            
+        try:
+            stock_data = yf.Ticker(ticker).history(period="5y", interval="1mo")['Close']
+            market_data = yf.Ticker(index_ticker).history(period="5y", interval="1mo")['Close']
+            
+            df = pd.DataFrame({'Stock': stock_data, 'Market': market_data}).dropna()
+            if len(df) < 12:
+                return 1.0
+                
+            returns = df.pct_change().dropna()
+            cov = returns['Stock'].cov(returns['Market'])
+            var = returns['Market'].var()
+            
+            return float(cov / var)
+        except Exception:
+            return 1.0
+
     def get_market_data(self, ticker: str) -> dict:
         ns_ticker = _ensure_ns_suffix(ticker)
         try:
@@ -223,7 +249,11 @@ class YFinanceProvider(FinancialDataProvider):
 
             beta = info.get("beta")
             if not beta or beta == 0.0:
-                beta = 1.0  # Fallback to market average beta instead of 0.0 to prevent Ke = Rf
+                # If info endpoint fails (Cloudflare block), compute it manually via historical prices
+                beta = self._calculate_historical_beta(ns_ticker)
+                
+            if not beta or beta == 0.0:
+                beta = 1.0  # Final fallback
 
             # shares_outstanding in crore (1 crore = 10,000,000)
             shares_in_crore = (shares_raw / 10_000_000) if shares_raw is not None else 0.0
