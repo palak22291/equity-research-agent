@@ -133,8 +133,11 @@ tax_expense, pretax_income, increase_in_current_assets, \
 increase_in_current_liabilities, net_borrowing
 
 After both tools return results, combine them into one JSON object with two keys: \
-"ratio_analysis" and "cashflow_analysis". Output ONLY the combined JSON — no markdown, \
-no explanation text.""",
+"ratio_analysis" and "cashflow_analysis".
+CRITICAL: The tools return a wrapper structure like {{"result": "{{\\"tool\\":...}}"}}.
+You MUST extract the inner JSON object, remove all escaped quotes, and combine them.
+Do NOT output the "result" wrapper, and do NOT output escaped quotes or backslashes.
+Output ONLY the combined, clean JSON — no markdown, no explanation text.""",
         tools=[run_ratio_analysis, run_cashflow_analysis],
         output_key="temp:analysis_results",
         include_contents="none",

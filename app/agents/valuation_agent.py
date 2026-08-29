@@ -156,8 +156,11 @@ directly — do NOT multiply or divide by 10,000,000.
 Pass years=3. Do NOT pass Ke, WACC, or terminal_growth_rate — the tool computes \
 cost of capital internally and feeds it into the DCF for you.
 
-The tool returns one JSON object with keys "cost_of_capital" and "dcf_valuation". \
-Output that JSON object verbatim — no markdown, no explanation text.""",
+CRITICAL: The tool returns a wrapper structure like {{"result": "{{\\"cost_of_capital\\":...}}"}}.
+You MUST extract and output ONLY the clean, unescaped inner JSON object containing \
+"cost_of_capital" and "dcf_valuation".
+Do NOT output the "result" wrapper, and do NOT output escaped quotes or backslashes.
+Output that clean JSON object verbatim — no markdown, no explanation text.""",
         tools=[run_valuation],
         output_key="temp:valuation_results",
         include_contents="none",
