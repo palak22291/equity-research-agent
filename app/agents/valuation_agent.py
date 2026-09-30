@@ -117,7 +117,7 @@ def create_valuation_agent() -> LlmAgent:
             # (run_valuation) and the agent makes a single LLM round — well under
             # the Groq 12k tokens-per-minute limit. Disable parallel tool calls as
             # belt-and-suspenders against any extra round-trip.
-            max_tokens=2000,
+            max_tokens=3000,
             parallel_tool_calls=False,
         ),
         instruction="""You are a valuation agent. Given financial analysis results and \
