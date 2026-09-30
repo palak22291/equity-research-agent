@@ -302,7 +302,14 @@ async function runAnalysis() {
     const groqKey=document.getElementById('groqKey').value.trim();
     if(groqKey&&!offline) body.groq_api_key=groqKey;
     const res=await fetch('/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const data=await res.json();
+    const contentType=res.headers.get('content-type')||'';
+    let data;
+    if(contentType.includes('application/json')){
+      data=await res.json();
+    } else {
+      const errText=await res.text();
+      throw new Error(res.status===504?'Analysis timed out on server (504 Gateway Timeout). Please try again.':`Server error (${res.status}): connection interrupted or server waking up.`);
+    }
     if(!res.ok) throw new Error(data.detail||JSON.stringify(data));
     renderDashboard(data);
   } catch(err) {

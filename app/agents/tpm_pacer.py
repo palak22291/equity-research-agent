@@ -62,6 +62,18 @@ async def _patched_acompletion(*args, **kwargs):
         for msg in kwargs["messages"]:
             if isinstance(msg, dict) and "reasoning_content" in msg:
                 del msg["reasoning_content"]
+
+    # When tool_choice is explicitly "none", strip tools and tool_choice so Groq's
+    # API won't fail with "Tool choice is none, but model called a tool" if a smaller
+    # model inadvertently attempts to format a tool call in its completion text.
+    tool_choice = kwargs.get("tool_choice")
+    if tool_choice == "none" or (isinstance(tool_choice, dict) and tool_choice.get("type") == "none"):
+        kwargs.pop("tools", None)
+        kwargs.pop("tool_choice", None)
+
+    # For reasoning models (e.g. gpt-oss-20b), minimize invisible thinking tokens
+    # so completions don't waste 1,500+ tokens and truncate halfway through JSON.
+    kwargs.setdefault("reasoning_effort", "low")
                 
     # Pace the request dynamically based on token size!
     tokens = _estimate_tokens(kwargs)
@@ -74,6 +86,7 @@ def _patched_completion(*args, **kwargs):
         for msg in kwargs["messages"]:
             if isinstance(msg, dict) and "reasoning_content" in msg:
                 del msg["reasoning_content"]
+    kwargs.setdefault("reasoning_effort", "low")
     return _original_completion(*args, **kwargs)
 
 litellm.acompletion = _patched_acompletion

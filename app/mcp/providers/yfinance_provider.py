@@ -105,14 +105,18 @@ def _round2(value) -> float:
         return None
 
 
-def _get(df, *labels):
-    """Return the most recent fiscal-year value for the first matching label."""
+def _get(df, *labels, col_name=None):
+    """Return the fiscal-year value for the first matching label for col_name (or first column)."""
     for label in labels:
         if label in df.index:
-            val = df.loc[label].iloc[0]
             try:
-                return float(val)
-            except (TypeError, ValueError):
+                if col_name is not None and col_name in df.columns:
+                    val = df.loc[label, col_name]
+                else:
+                    val = df.loc[label].iloc[0]
+                if val is not None and not (isinstance(val, float) and val != val):
+                    return float(val)
+            except (TypeError, ValueError, IndexError, KeyError):
                 pass
     return None
 
@@ -136,36 +140,55 @@ class YFinanceProvider(FinancialDataProvider):
             if cashflow is None or cashflow.empty:
                 return {"error": f"No cash flow data for {ns_ticker}"}
 
-            # Most recent fiscal year only (iloc[:, 0])
-            fiscal_year_end = str(income.columns[0].date())
+            # Determine which column represents the most recent completed fiscal year.
+            # Yahoo Finance sometimes includes a forward placeholder column (e.g. unfiled future year)
+            # where Total Revenue / Net Income is NaN. Skip such placeholder columns.
+            target_col = income.columns[0]
+            for col in income.columns:
+                has_data = False
+                for test_label in ("Total Revenue", "Operating Revenue", "Net Income"):
+                    if test_label in income.index:
+                        try:
+                            val = income.loc[test_label, col]
+                            if val is not None and not (isinstance(val, float) and val != val):
+                                has_data = True
+                                break
+                        except Exception:
+                            pass
+                if has_data:
+                    target_col = col
+                    break
 
-            total_revenue   = _get(income,  "Total Revenue")
-            gross_profit    = _get(income,  "Gross Profit")
-            net_income      = _get(income,  "Net Income")
-            ebit            = _get(income,  "EBIT", "Operating Income")
-            interest_exp    = _get(income,  "Interest Expense")
-            tax_expense     = _get(income,  "Tax Provision", "Income Tax Expense")
-            pretax_income   = _get(income,  "Pretax Income")
+            fiscal_year_end = str(target_col.date())
 
-            total_assets        = _get(balance, "Total Assets")
-            current_assets      = _get(balance, "Current Assets")
-            inventory           = _get(balance, "Inventory")
+            total_revenue   = _get(income,  "Total Revenue", col_name=target_col)
+            gross_profit    = _get(income,  "Gross Profit", col_name=target_col)
+            net_income      = _get(income,  "Net Income", col_name=target_col)
+            ebit            = _get(income,  "EBIT", "Operating Income", col_name=target_col)
+            interest_exp    = _get(income,  "Interest Expense", col_name=target_col)
+            tax_expense     = _get(income,  "Tax Provision", "Income Tax Expense", col_name=target_col)
+            pretax_income   = _get(income,  "Pretax Income", col_name=target_col)
+
+            total_assets        = _get(balance, "Total Assets", col_name=target_col)
+            current_assets      = _get(balance, "Current Assets", col_name=target_col)
+            inventory           = _get(balance, "Inventory", col_name=target_col)
             cash                = _get(balance, "Cash And Cash Equivalents",
-                                               "Cash Cash Equivalents And Short Term Investments")
-            accounts_receivable = _get(balance, "Accounts Receivable", "Net Receivables")
-            current_liabilities = _get(balance, "Current Liabilities")
+                                               "Cash Cash Equivalents And Short Term Investments", col_name=target_col)
+            accounts_receivable = _get(balance, "Accounts Receivable", "Net Receivables", col_name=target_col)
+            current_liabilities = _get(balance, "Current Liabilities", col_name=target_col)
             total_non_current_liabilities = _get(
                 balance,
                 "Total Non Current Liabilities Net Minority Interest",
                 "Long Term Debt",
+                col_name=target_col,
             )
             shareholders_equity = _get(balance, "Stockholders Equity",
-                                               "Total Stockholder Equity")
+                                               "Total Stockholder Equity", col_name=target_col)
 
-            cfo          = _get(cashflow, "Operating Cash Flow", "Total Cash From Operating Activities")
-            capex_raw    = _get(cashflow, "Capital Expenditure")
+            cfo          = _get(cashflow, "Operating Cash Flow", "Total Cash From Operating Activities", col_name=target_col)
+            capex_raw    = _get(cashflow, "Capital Expenditure", col_name=target_col)
             non_cash_exp = _get(cashflow, "Depreciation And Amortization",
-                                          "Depreciation Amortization Depletion")
+                                          "Depreciation Amortization Depletion", col_name=target_col)
 
             # capex and interest_expense must be returned as positive values
             capex            = abs(capex_raw)           if capex_raw    is not None else None

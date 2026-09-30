@@ -24,11 +24,10 @@ import sys
 
 import litellm
 
-# Retry up to 10 times on rate-limit errors, with exponential backoff.
-# Groq's TPM window resets every 60s; retries cover within-agent bursts
-# (the data_agent makes two LLM rounds that may together hit the TPM cap).
-litellm.num_retries = 10
-litellm.retry_after = 10  # minimum seconds before first retry
+# Retries for transient network hiccups. The smart TPM pacer already handles
+# rate-limiting proactively, so we keep retries low to prevent 100s Render gateway timeouts.
+litellm.num_retries = 2
+litellm.retry_after = 3
 
 # Use Gemini key path (not Vertex AI)
 os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "FALSE")
