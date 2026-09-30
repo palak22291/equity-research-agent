@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🏦 AI Equity Research Analyst
+#  AI Equity Research Analyst
 
 **Autonomous multi-agent system that produces institutional-grade equity research reports — from live financials to DCF valuation verdict in minutes.**
 
@@ -291,7 +291,7 @@ Built during the **Kaggle × Google 5-Day AI Agents Intensive** (Agents for Busi
 
 ## About
 
-Built by **[Palak Gupta](https://github.com/palak22291)** — 2nd year BTech (CS + AI) at Rishihood University, with a Finance minor.
+Built by **[Palak Gupta](https://github.com/palak22291)** — 2nd year BTech (CS + AI) at Rishihood University(Newton School of Technology), with a Finance minor.
 
 This project sits at the intersection of AI systems engineering and financial valuation. The calculation engine is directly derived from academic coursework (professor-graded, full marks); the agent architecture was built during the Kaggle × Google AI Agents Intensive.
 
