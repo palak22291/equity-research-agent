@@ -138,27 +138,39 @@ def fetch_all_financial_data(ticker: str, sector: str, beta_override: float = 0.
 
     # --- Balance sheet deltas (current vs prior year) ---
     ns_ticker = _ensure_ns_suffix(ticker)
-    delta_ca = delta_cl = net_borrowing = None
+    delta_ca = delta_cl = net_borrowing = 0.0
     try:
         stock = yf.Ticker(ns_ticker)
         balance = stock.balance_sheet
         if balance is not None and not balance.empty and balance.shape[1] >= 2:
-            curr_ca = _get_col(balance, 0, "Current Assets")
-            prev_ca = _get_col(balance, 1, "Current Assets")
-            curr_cl = _get_col(balance, 0, "Current Liabilities")
-            prev_cl = _get_col(balance, 1, "Current Liabilities")
-            curr_ltd = _get_col(balance, 0,
-                                "Total Non Current Liabilities Net Minority Interest",
-                                "Long Term Debt")
-            prev_ltd = _get_col(balance, 1,
-                                "Total Non Current Liabilities Net Minority Interest",
-                                "Long Term Debt")
-            if curr_ca is not None and prev_ca is not None:
-                delta_ca = _r2(curr_ca - prev_ca)
-            if curr_cl is not None and prev_cl is not None:
-                delta_cl = _r2(curr_cl - prev_cl)
-            if curr_ltd is not None and prev_ltd is not None:
-                net_borrowing = _r2(curr_ltd - prev_ltd)
+            curr_idx = 0
+            target_date = statements.get("fiscal_year_end", "")
+            for i, col in enumerate(balance.columns):
+                if hasattr(col, "date") and str(col.date()) == target_date:
+                    curr_idx = i
+                    break
+                elif str(col).startswith(target_date):
+                    curr_idx = i
+                    break
+            
+            prev_idx = curr_idx + 1
+            if balance.shape[1] > prev_idx:
+                curr_ca = _get_col(balance, curr_idx, "Current Assets")
+                prev_ca = _get_col(balance, prev_idx, "Current Assets")
+                curr_cl = _get_col(balance, curr_idx, "Current Liabilities")
+                prev_cl = _get_col(balance, prev_idx, "Current Liabilities")
+                curr_ltd = _get_col(balance, curr_idx,
+                                    "Total Non Current Liabilities Net Minority Interest",
+                                    "Long Term Debt")
+                prev_ltd = _get_col(balance, prev_idx,
+                                    "Total Non Current Liabilities Net Minority Interest",
+                                    "Long Term Debt")
+                if curr_ca is not None and prev_ca is not None:
+                    delta_ca = _r2(curr_ca - prev_ca)
+                if curr_cl is not None and prev_cl is not None:
+                    delta_cl = _r2(curr_cl - prev_cl)
+                if curr_ltd is not None and prev_ltd is not None:
+                    net_borrowing = _r2(curr_ltd - prev_ltd)
     except Exception as exc:
         print(f"[mcp] WARNING: balance sheet delta fetch failed: {exc}")
 
